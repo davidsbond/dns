@@ -28,11 +28,13 @@ type (
 // upstream DNS servers and logger. This can be assigned to the Handler field of the dns.Server type.
 func NewDNSAPI(allow, block *set.Set[string], upstreams []string, logger *slog.Logger) *DNSAPI {
 	return &DNSAPI{
-		allow:     allow,
-		block:     block,
+		allow:  allow,
+		block:  block,
+		logger: logger,
+		client: &dns.Client{Net: "udp4"},
+		// We want to weight the upstream DNS servers by their round-trip duration in ascending order, so the historically
+		// fastest DNS upstream is always tried first.
 		upstreams: weightslice.New[string, time.Duration](upstreams, weightslice.Ascending),
-		logger:    logger,
-		client:    &dns.Client{Net: "udp4"},
 	}
 }
 
@@ -93,17 +95,15 @@ func (api *DNSAPI) dnsUpstream(ctx context.Context, w dns.ResponseWriter, id uin
 	}
 
 	for i, upstream := range api.upstreams.Range() {
+		logger := api.logger.With(
+			"upstream", upstream,
+			"remote", w.RemoteAddr(),
+			"question", r.Question[0].Name,
+		)
+
 		resp, rtt, err := api.client.ExchangeContext(ctx, r, upstream)
 		if err != nil {
-			api.logger.
-				With(
-					"error", err,
-					"upstream", upstream,
-					"remote", w.RemoteAddr(),
-					"question", r.Question[0].Name,
-				).
-				Error("failed to upstream DNS request")
-
+			logger.With("error", err).Error("failed to upstream DNS request")
 			api.dnsError(w, r, dns.RcodeServerFailure)
 			continue
 		}
@@ -123,24 +123,12 @@ func (api *DNSAPI) dnsUpstream(ctx context.Context, w dns.ResponseWriter, id uin
 		}
 
 		if err = w.WriteMsg(resp); err != nil {
-			api.logger.
-				With(
-					"error", err,
-					"remote", w.RemoteAddr(),
-					"question", r.Question[0].Name,
-				).
-				Error("failed to respond to DNS request")
+			logger.With("error", err).Error("failed to respond to DNS request")
 		}
 
 		return
 	}
 
-	api.logger.
-		With(
-			"remote", w.RemoteAddr(),
-			"question", r.Question[0].Name,
-		).
-		Error("failed querying all upstream DNS servers")
-
+	api.logger.With("remote", w.RemoteAddr(), "question", r.Question[0].Name).Error("failed querying all upstream DNS servers")
 	api.dnsError(w, r, dns.RcodeServerFailure)
 }

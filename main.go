@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -21,6 +22,10 @@ func main() {
 		CompletionOptions: cobra.CompletionOptions{
 			DisableDefaultCmd: true,
 		},
+	}
+
+	if info, ok := debug.ReadBuildInfo(); ok {
+		cmd.Version = info.Main.Version
 	}
 
 	cmd.AddCommand(

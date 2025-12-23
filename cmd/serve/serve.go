@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/davidsbond/dns/internal/server"
+	"github.com/davidsbond/x/envvar"
 )
 
 // Command returns the "serve" command used to start and run the DNS server.
@@ -37,8 +38,8 @@ dns serve --upstreams 1.1.1.1:53,1.0.0.1:53`,
 	}
 
 	flags := cmd.Flags()
-	flags.StringVar(&addr, "addr", "0.0.0.0:53", "bind address for serving DNS requests")
-	flags.StringSliceVar(&upstreams, "upstreams", []string{"8.8.8.8:53", "8.8.4.4:53"}, "upstream DNS servers")
+	flags.StringVar(&addr, "addr", envvar.String("DNS_ADDR", "127.0.0.1:4000"), "bind address for serving DNS requests (DNS_ADDR)")
+	flags.StringSliceVar(&upstreams, "upstreams", envvar.StringSlice("DNS_UPSTREAMS", ",", []string{"8.8.8.8:53", "8.8.4.4:53"}), "upstream DNS servers (DNS_UPSTREAMS)")
 
 	return cmd
 }

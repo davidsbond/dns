@@ -49,6 +49,7 @@ func (api *DNSAPI) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	response.SetReply(r)
 
 	if len(r.Question) != 1 {
+		// Handling multiple questions per request is typically not supported.
 		api.dnsError(w, r, dns.RcodeNotImplemented)
 		return
 	}
@@ -98,13 +99,12 @@ func (api *DNSAPI) dnsUpstream(ctx context.Context, w dns.ResponseWriter, id uin
 		logger := api.logger.With(
 			"upstream", upstream,
 			"remote", w.RemoteAddr(),
-			"question", r.Question[0].Name,
+			"question", question.Name,
 		)
 
 		resp, rtt, err := api.client.ExchangeContext(ctx, r, upstream)
 		if err != nil {
 			logger.With("error", err).Error("failed to upstream DNS request")
-			api.dnsError(w, r, dns.RcodeServerFailure)
 			continue
 		}
 
@@ -129,6 +129,6 @@ func (api *DNSAPI) dnsUpstream(ctx context.Context, w dns.ResponseWriter, id uin
 		return
 	}
 
-	api.logger.With("remote", w.RemoteAddr(), "question", r.Question[0].Name).Error("failed querying all upstream DNS servers")
+	api.logger.With("remote", w.RemoteAddr(), "question", question.Name).Error("failed querying all upstream DNS servers")
 	api.dnsError(w, r, dns.RcodeServerFailure)
 }

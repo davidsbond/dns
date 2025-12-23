@@ -131,5 +131,5 @@ func (api *DNSAPI) dnsUpstream(ctx context.Context, w dns.ResponseWriter, id uin
 		).
 		Error("failed querying all upstream DNS servers")
 
-	api.dnsError(w, r, dns.RcodeServerFailure)
+	api.dnsError(w, r, dns.RcodeNameError)
 }

@@ -9,6 +9,8 @@ on:
       - '**.go'
       - '**.mod'
       - '**.sum'
+      - '**/block.txt'
+      - '**/allow.txt'
       - '.github/workflows/go.yml'
     branches:
       - main
@@ -17,6 +19,8 @@ on:
       - '**.go'
       - '**.mod'
       - '**.sum'
+      - '**/block.txt'
+      - '**/allow.txt'
       - '.github/workflows/go.yml'
 
 jobs:

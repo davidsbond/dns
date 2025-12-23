@@ -3,7 +3,7 @@ module github.com/davidsbond/dns
 go 1.25.1
 
 require (
-	github.com/davidsbond/x v0.0.0-20251223173210-84d4056414f2
+	github.com/davidsbond/x v0.0.0-20251223221351-1e5e705ca202
 	github.com/miekg/dns v1.1.69
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1

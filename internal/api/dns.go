@@ -9,6 +9,7 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/davidsbond/x/set"
+	"github.com/davidsbond/x/weightslice"
 )
 
 type (
@@ -17,7 +18,7 @@ type (
 	DNSAPI struct {
 		allow     *set.Set[string]
 		block     *set.Set[string]
-		upstreams []string
+		upstreams *weightslice.Slice[string, time.Duration]
 		logger    *slog.Logger
 		client    *dns.Client
 	}
@@ -29,7 +30,7 @@ func NewDNSAPI(allow, block *set.Set[string], upstreams []string, logger *slog.L
 	return &DNSAPI{
 		allow:     allow,
 		block:     block,
-		upstreams: upstreams,
+		upstreams: weightslice.New[string, time.Duration](upstreams, weightslice.Ascending),
 		logger:    logger,
 		client:    &dns.Client{Net: "udp4"},
 	}
@@ -91,8 +92,8 @@ func (api *DNSAPI) dnsUpstream(ctx context.Context, w dns.ResponseWriter, id uin
 		Question: []dns.Question{question},
 	}
 
-	for _, upstream := range api.upstreams {
-		resp, _, err := api.client.ExchangeContext(ctx, r, upstream)
+	for i, upstream := range api.upstreams.Range() {
+		resp, rtt, err := api.client.ExchangeContext(ctx, r, upstream)
 		if err != nil {
 			api.logger.
 				With(
@@ -106,6 +107,11 @@ func (api *DNSAPI) dnsUpstream(ctx context.Context, w dns.ResponseWriter, id uin
 			api.dnsError(w, r, dns.RcodeServerFailure)
 			continue
 		}
+
+		// Update the weighting for this upstream based on its round-trip time. We always want to use the known
+		// fastest upstream first. Since these are all initialized with a weight of zero we'll always pick ones
+		// we've not used yet until all have been used at least once and a weighting has been set.
+		api.upstreams.SetWeight(i, rtt)
 
 		// If we got a successful response or that the domain name does not exist from the upstream, we forward that
 		// back to the caller. Otherwise, we try the next upstream.

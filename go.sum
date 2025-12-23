@@ -1,8 +1,10 @@
 github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/davidsbond/x v0.0.0-20251223173210-84d4056414f2 h1:GO+anA2V5NLkpEnW1KNAgmhzA4XeDL7WRolyLZQAsyw=
-github.com/davidsbond/x v0.0.0-20251223173210-84d4056414f2/go.mod h1:UfVUdmeiWWpWu7xaQ66dsfX7VCdXYel8eTFN19pClf4=
+github.com/davidsbond/x v0.0.0-20251223214435-8ffdf47b8fc2 h1:69YF5A8FKmzor5ghb0RQZD1Bkb4L0WsbhlPcV64ehbQ=
+github.com/davidsbond/x v0.0.0-20251223214435-8ffdf47b8fc2/go.mod h1:UfVUdmeiWWpWu7xaQ66dsfX7VCdXYel8eTFN19pClf4=
+github.com/davidsbond/x v0.0.0-20251223221351-1e5e705ca202 h1:J16md0I7/ME7yFqza2FZCXkPiCEYaR0nCY8J4skK+k4=
+github.com/davidsbond/x v0.0.0-20251223221351-1e5e705ca202/go.mod h1:UfVUdmeiWWpWu7xaQ66dsfX7VCdXYel8eTFN19pClf4=
 github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
 github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=

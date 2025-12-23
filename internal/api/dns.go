@@ -107,7 +107,12 @@ func (api *DNSAPI) dnsUpstream(ctx context.Context, w dns.ResponseWriter, id uin
 			continue
 		}
 
-		if resp.MsgHdr.Rcode != dns.RcodeSuccess {
+		// If we got a successful response or that the domain name does not exist from the upstream, we forward that
+		// back to the caller. Otherwise, we try the next upstream.
+		switch resp.Rcode {
+		case dns.RcodeSuccess, dns.RcodeNameError:
+			break
+		default:
 			continue
 		}
 
@@ -131,5 +136,5 @@ func (api *DNSAPI) dnsUpstream(ctx context.Context, w dns.ResponseWriter, id uin
 		).
 		Error("failed querying all upstream DNS servers")
 
-	api.dnsError(w, r, dns.RcodeNameError)
+	api.dnsError(w, r, dns.RcodeServerFailure)
 }

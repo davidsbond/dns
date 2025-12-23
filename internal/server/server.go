@@ -45,11 +45,14 @@ func Run(ctx context.Context, config Config) error {
 
 	group, ctx := errgroup.WithContext(ctx)
 	group.Go(func() error {
+		config.Logger.Info("server starting")
 		return server.ListenAndServe()
 	})
 
 	group.Go(func() error {
 		<-ctx.Done()
+
+		config.Logger.Warn("server shutting down")
 		return server.Shutdown()
 	})
 

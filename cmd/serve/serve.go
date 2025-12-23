@@ -3,6 +3,7 @@ package serve
 
 import (
 	"log/slog"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -30,7 +31,7 @@ dns serve --upstreams 1.1.1.1:53,1.0.0.1:53`,
 			config := server.Config{
 				Addr:      addr,
 				Upstreams: upstreams,
-				Logger:    slog.Default(),
+				Logger:    slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})),
 			}
 
 			return server.Run(cmd.Context(), config)

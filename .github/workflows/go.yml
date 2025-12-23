@@ -1,0 +1,45 @@
+name: go
+
+concurrency:
+  group: ${{ github.workflow }}/${{ github.ref_name }}
+
+on:
+  push:
+    paths:
+      - '**.go'
+      - '**.mod'
+      - '**.sum'
+      - '.github/workflows/go.yml'
+    branches:
+      - main
+  pull_request:
+    paths:
+      - '**.go'
+      - '**.mod'
+      - '**.sum'
+      - '.github/workflows/go.yml'
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.1
+
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run linter
+        run: go tool staticcheck ./...
+        
+      - name: Run generators
+        run: |
+          go generate ./...          
+          git add .
+          git diff --staged --exit-code
+
+      - name: Run tests
+        run: go test -race ./...

@@ -117,7 +117,7 @@ func (api *DNSAPI) dnsUpstream(ctx context.Context, w dns.ResponseWriter, id uin
 		// back to the caller. Otherwise, we try the next upstream.
 		switch resp.Rcode {
 		case dns.RcodeSuccess, dns.RcodeNameError:
-			break
+			// Pass to the client for these codes.
 		default:
 			continue
 		}

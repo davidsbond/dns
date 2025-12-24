@@ -45,7 +45,7 @@ func Run(ctx context.Context, config Config) error {
 
 	group, ctx := errgroup.WithContext(ctx)
 	group.Go(func() error {
-		config.Logger.Info("server starting")
+		config.Logger.With("addr", config.Addr, "upstreams", config.Upstreams).Info("server starting")
 		return server.ListenAndServe()
 	})
 

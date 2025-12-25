@@ -1,8 +1,5 @@
 // Package list provides the primitives for in-memory block and allow lists for DNS resolution. By default, a very strict
 // block and allow list are embedded into the binary. These can be updated using "go generate".
-//
-//go:generate curl -sS -L -o data/block.txt https://raw.githubusercontent.com/hagezi/dns-blocklists/refs/heads/main/domains/ultimate.txt
-//go:generate curl -sS -L -o data/allow.txt https://raw.githubusercontent.com/hagezi/dns-blocklists/refs/heads/main/share/ultimate-known-issues.txt
 package list
 
 import (

@@ -2,7 +2,6 @@ package server_test
 
 import (
 	"context"
-	"log/slog"
 	"testing"
 	"time"
 
@@ -24,23 +23,35 @@ func TestRun(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
+	config := server.Config{
+		DNS: server.DNSConfig{
+			Upstreams: []string{"1.1.1.1:53", "1.0.0.1:53", "8.8.8.8:53", "8.8.4.4:53"},
+		},
+		Transport: server.TransportConfig{
+			UDP: &server.UDPConfig{
+				Bind: "127.0.0.1:4000",
+			},
+			TCP: &server.TCPConfig{
+				Bind: "127.0.0.1:4000",
+			},
+		},
+	}
+
 	group, ctx := errgroup.WithContext(ctx)
 	group.Go(func() error {
 		t.Log("starting test server")
-		require.NoError(t, server.Run(ctx, server.Config{
-			Addr:      "127.0.0.1:4000",
-			Upstreams: []string{"1.1.1.1:53", "1.0.0.1:53", "8.8.8.8:53", "8.8.4.4:53"},
-			Logger: slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{
-				AddSource: testing.Verbose(),
-				Level:     slog.LevelDebug,
-			})),
-		}))
+		require.NoError(t, server.Run(ctx, config))
 
 		return nil
 	})
 
-	client := &dns.Client{
-		Net: "udp4",
+	clients := map[string]*dns.Client{
+		config.Transport.UDP.Bind: {
+			Net: "udp",
+		},
+		config.Transport.TCP.Bind: {
+			Net: "tcp",
+		},
 	}
 
 	// Wait for the server to start up.
@@ -57,10 +68,12 @@ func TestRun(t *testing.T) {
 			},
 		}
 
-		resp, _, err := client.ExchangeContext(ctx, msg, "127.0.0.1:4000")
-		require.NoError(t, err)
-		assert.EqualValues(t, dns.RcodeNameError, resp.Rcode)
-		assert.Empty(t, resp.Answer)
+		for addr, client := range clients {
+			resp, _, err := client.ExchangeContext(ctx, msg, addr)
+			require.NoError(t, err)
+			assert.EqualValues(t, dns.RcodeNameError, resp.Rcode)
+			assert.Empty(t, resp.Answer)
+		}
 	})
 
 	t.Run("handles domain in allow list", func(t *testing.T) {
@@ -74,10 +87,12 @@ func TestRun(t *testing.T) {
 			},
 		}
 
-		resp, _, err := client.ExchangeContext(ctx, msg, "127.0.0.1:4000")
-		require.NoError(t, err)
-		assert.EqualValues(t, dns.RcodeSuccess, resp.Rcode)
-		assert.NotEmpty(t, resp.Answer)
+		for addr, client := range clients {
+			resp, _, err := client.ExchangeContext(ctx, msg, addr)
+			require.NoError(t, err)
+			assert.EqualValues(t, dns.RcodeSuccess, resp.Rcode)
+			assert.NotEmpty(t, resp.Answer)
+		}
 	})
 
 	t.Run("handles domain not in either list", func(t *testing.T) {
@@ -91,10 +106,12 @@ func TestRun(t *testing.T) {
 			},
 		}
 
-		resp, _, err := client.ExchangeContext(ctx, msg, "127.0.0.1:4000")
-		require.NoError(t, err)
-		assert.EqualValues(t, dns.RcodeSuccess, resp.Rcode)
-		assert.NotEmpty(t, resp.Answer)
+		for addr, client := range clients {
+			resp, _, err := client.ExchangeContext(ctx, msg, addr)
+			require.NoError(t, err)
+			assert.EqualValues(t, dns.RcodeSuccess, resp.Rcode)
+			assert.NotEmpty(t, resp.Answer)
+		}
 	})
 
 	// Shutdown the server and give it some time to gracefully exit.

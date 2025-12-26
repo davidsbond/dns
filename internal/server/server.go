@@ -3,8 +3,10 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"os"
 
 	"github.com/miekg/dns"
 	"golang.org/x/sync/errgroup"
@@ -13,20 +15,12 @@ import (
 	"github.com/davidsbond/dns/internal/list"
 )
 
-type (
-	// The Config type exposes fields used for configuration of the DNS server.
-	Config struct {
-		// The bind address of the DNS server.
-		Addr string
-		// The desired upstream DNS servers, each address must include a port.
-		Upstreams []string
-		// The logger to use for DNS resolution errors.
-		Logger *slog.Logger
-	}
-)
-
 // Run the DNS server.
 func Run(ctx context.Context, config Config) error {
+	if err := config.Validate(); err != nil {
+		return fmt.Errorf("invalid server configuration: %w", err)
+	}
+
 	allow, err := list.Allow(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load allow list: %w", err)
@@ -37,24 +31,87 @@ func Run(ctx context.Context, config Config) error {
 		return fmt.Errorf("failed to load block list: %w", err)
 	}
 
-	server := &dns.Server{
-		Addr:    config.Addr,
-		Net:     "udp",
-		Handler: api.NewDNSAPI(allow, block, config.Upstreams, config.Logger),
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
+	handler := api.NewDNSAPI(allow, block, config.DNS.Upstreams, logger)
+
+	group, ctx := errgroup.WithContext(ctx)
+
+	if config.Transport.UDP != nil {
+		group.Go(func() error {
+			return runDNSServer(ctx, logger, &dns.Server{
+				Addr:    config.Transport.UDP.Bind,
+				Net:     "udp",
+				Handler: handler,
+			})
+		})
 	}
+
+	if config.Transport.TCP != nil {
+		group.Go(func() error {
+			return runDNSServer(ctx, logger, &dns.Server{
+				Addr:    config.Transport.TCP.Bind,
+				Net:     "tcp",
+				Handler: handler,
+			})
+		})
+	}
+
+	var tlsConfig *tls.Config
+	if config.Transport.TLS != nil {
+		tlsConfig, err = loadTLSConfig(config.Transport.TLS.Cert, config.Transport.TLS.Key)
+		if err != nil {
+			return fmt.Errorf("failed to load tls config: %w", err)
+		}
+	}
+
+	if config.Transport.DOT != nil {
+		group.Go(func() error {
+			return runDNSServer(ctx, logger, &dns.Server{
+				Addr:      config.Transport.DOT.Bind,
+				Net:       "tcp-tls",
+				TLSConfig: tlsConfig,
+			})
+		})
+	}
+
+	return group.Wait()
+}
+
+func runDNSServer(ctx context.Context, logger *slog.Logger, server *dns.Server) error {
+	log := logger.With("net", server.Net, "addr", server.Addr)
+
+	// Allow multiple listeners to use the same address/port if supported.
+	server.ReusePort = true
+	server.ReuseAddr = true
 
 	group, ctx := errgroup.WithContext(ctx)
 	group.Go(func() error {
-		config.Logger.With("addr", config.Addr, "upstreams", config.Upstreams).Info("server starting")
+		log.Info("server starting")
 		return server.ListenAndServe()
 	})
 
 	group.Go(func() error {
 		<-ctx.Done()
 
-		config.Logger.Warn("server shutting down")
+		log.Warn("server shutting down")
 		return server.Shutdown()
 	})
 
 	return group.Wait()
+}
+
+func loadTLSConfig(certFile, keyFile string) (*tls.Config, error) {
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+		NextProtos:   []string{"h2", "http/1.1"},
+	}, nil
 }

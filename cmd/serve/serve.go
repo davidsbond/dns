@@ -2,45 +2,27 @@
 package serve
 
 import (
-	"log/slog"
-	"os"
+	"fmt"
 
 	"github.com/spf13/cobra"
 
 	"github.com/davidsbond/dns/internal/server"
-	"github.com/davidsbond/x/envvar"
 )
 
 // Command returns the "serve" command used to start and run the DNS server.
 func Command() *cobra.Command {
-	var (
-		addr      string
-		upstreams []string
-	)
-
-	cmd := &cobra.Command{
-		Use:   "serve",
-		Short: "Run the DNS server",
-		Example: `
-# Upstream to Google
-dns serve --upstreams 8.8.8.8:53,8.8.4.4:53
-
-# Upstream to Cloudflare
-dns serve --upstreams 1.1.1.1:53,1.0.0.1:53`,
+	return &cobra.Command{
+		Use:     "serve <config-file>",
+		Short:   "Run the DNS server",
+		Example: "dns serve config.toml",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			config := server.Config{
-				Addr:      addr,
-				Upstreams: upstreams,
-				Logger:    slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})),
+			config, err := server.LoadConfig(args[0])
+			if err != nil {
+				return fmt.Errorf("failed to load configuration file: %w", err)
 			}
 
 			return server.Run(cmd.Context(), config)
 		},
 	}
-
-	flags := cmd.Flags()
-	flags.StringVar(&addr, "addr", envvar.String("DNS_ADDR", "127.0.0.1:4000"), "bind address for serving DNS requests (DNS_ADDR)")
-	flags.StringSliceVar(&upstreams, "upstreams", envvar.StringSlice("DNS_UPSTREAMS", ",", []string{"8.8.8.8:53", "8.8.4.4:53"}), "upstream DNS servers (DNS_UPSTREAMS)")
-
-	return cmd
 }

@@ -1,0 +1,5 @@
+[transport.udp]
+bind = "127.0.0.1:53"
+
+[transport.tcp]
+bind = "127.0.0.1:53"

@@ -31,7 +31,7 @@ func NewDNSAPI(allow, block *set.Set[string], upstreams []string, logger *slog.L
 		allow:  allow,
 		block:  block,
 		logger: logger,
-		client: &dns.Client{Net: "udp4"},
+		client: &dns.Client{Net: "udp"},
 		// We want to weight the upstream DNS servers by their round-trip duration in ascending order, so the historically
 		// fastest DNS upstream is always tried first.
 		upstreams: weightslice.New[string, time.Duration](upstreams, weightslice.Ascending),

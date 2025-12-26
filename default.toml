@@ -1,0 +1,8 @@
+[dns]
+upstreams = ["8.8.8.8:53", "8.8.4.4:53"]
+
+[transport.udp]
+bind = "127.0.0.1:4000"
+
+[transport.tcp]
+bind = "127.0.0.1:4000"

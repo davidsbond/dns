@@ -1,0 +1,5 @@
+[dns]
+upstreams = true
+
+[transport.udp]
+bind = "127.0.0.1:53"

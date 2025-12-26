@@ -21,6 +21,8 @@ builds:
 
 archives:
   - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - default.toml
     formats:
       - zip
 
@@ -52,10 +54,5 @@ dockers_v2:
       - linux/arm64
     ids:
       - dns
-    annotations:
-      "org.opencontainers.image.description": "The Wiremate container image"
-      "org.opencontainers.image.created": "{{.Date}}"
-      "org.opencontainers.image.name": "{{.ProjectName}}"
-      "org.opencontainers.image.revision": "{{.FullCommit}}"
-      "org.opencontainers.image.version": "{{.Version}}"
-      "org.opencontainers.image.source": "{{.GitURL}}"
+    extra_files:
+      - default.toml

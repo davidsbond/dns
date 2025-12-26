@@ -1,0 +1,18 @@
+[dns]
+upstreams = ["8.8.8.8:53", "8.8.4.4:53"]
+
+[transport.udp]
+bind = "127.0.0.1:53"
+
+[transport.tcp]
+bind = "127.0.0.1:53"
+
+[transport.dot]
+bind = "127.0.0.1:853"
+
+[transport.doh]
+bind = "127.0.0.1:443"
+
+[transport.tls]
+cert = "path/to/cert.pem"
+key = "path/to/key.pem"

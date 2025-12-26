@@ -148,6 +148,9 @@ func TestHandler_ServeDNS(t *testing.T) {
 
 			require.NotContains(t, errorCodes, w.message.Rcode, "dns response should not contain an error")
 			require.NotEmpty(t, w.message.Answer)
+			assert.False(t, w.message.Authoritative)
+			assert.True(t, w.message.RecursionAvailable)
+			assert.False(t, w.message.AuthenticatedData)
 		})
 	}
 }

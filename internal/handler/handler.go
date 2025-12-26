@@ -84,6 +84,8 @@ func (h *Handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 
 // ServeHTTP handles an inbound HTTP request attempting to perform a DNS query using DNS-over-HTTPs.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	const maxBytes = 4096
+
 	if r.Method != http.MethodPost && r.Method != http.MethodGet {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		return
@@ -109,7 +111,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		reader := http.MaxBytesReader(w, r.Body, 4096)
+		reader := http.MaxBytesReader(w, r.Body, maxBytes)
 		defer reader.Close()
 
 		data, err = io.ReadAll(reader)
@@ -126,13 +128,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Otherwise, we look for the "dns" query parameter which contains the same thing the request body would have
 	// but in a base64 encoded format.
 	if r.Method == http.MethodGet {
-		dns := r.URL.Query().Get("dns")
-		if dns == "" {
+		query := r.URL.Query().Get("dns")
+		if query == "" {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 
-		data, err = base64.RawURLEncoding.DecodeString(dns)
+		data, err = base64.RawURLEncoding.DecodeString(query)
 		if err != nil {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
@@ -198,6 +200,26 @@ func (h *Handler) dnsError(w io.Writer, r *dns.Msg, code int) {
 }
 
 func (h *Handler) dnsUpstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error) {
+	const udpSize = 1232
+
+	// Before we upstream a DNS request, we'll cap the UDP size to prevent the upstream from sending large
+	// or fragmented messages.
+	opt := r.IsEdns0()
+	if opt == nil {
+		opt = &dns.OPT{
+			Hdr: dns.RR_Header{
+				Name:   ".",
+				Rrtype: dns.TypeOPT,
+			},
+		}
+
+		r.Extra = append(r.Extra, opt)
+	}
+
+	if opt.UDPSize() < udpSize {
+		opt.SetUDPSize(udpSize)
+	}
+
 	// Iterate over the upstreams in ascending order of most recent round-trip-time.
 	for i, upstream := range h.upstreams.Range() {
 		logger := h.logger.With("upstream", upstream)
@@ -229,6 +251,13 @@ func (h *Handler) dnsUpstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error)
 			// Pass to the client for these codes.
 		default:
 			continue
+		}
+
+		// We want to avoid sending any EDNS0 options from the upstream to avoid leaking any upstream
+		// metadata.
+		opt = resp.IsEdns0()
+		if opt != nil {
+			opt.Option = nil
 		}
 
 		// We need to update the flags to correspond with what this DNS server provides, rather than the

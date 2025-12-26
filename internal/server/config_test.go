@@ -1,7 +1,6 @@
 package server_test
 
 import (
-	"embed"
 	"path/filepath"
 	"testing"
 
@@ -9,11 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/davidsbond/dns/internal/server"
-)
-
-var (
-	//go:embed testdata/*.toml
-	data embed.FS
 )
 
 func TestLoadConfig(t *testing.T) {

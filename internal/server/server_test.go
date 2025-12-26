@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"context"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -45,73 +46,87 @@ func TestRun(t *testing.T) {
 		return nil
 	})
 
-	clients := map[string]*dns.Client{
-		config.Transport.UDP.Bind: {
-			Net: "udp",
-		},
-		config.Transport.TCP.Bind: {
-			Net: "tcp",
-		},
-	}
-
 	// Wait for the server to start up.
 	<-time.After(time.Second)
 
-	t.Run("handles domain in block list", func(t *testing.T) {
-		msg := &dns.Msg{
-			Question: []dns.Question{
-				{
-					Name:   "00280.com.",
-					Qtype:  dns.TypeA,
-					Qclass: dns.ClassINET,
-				},
+	t.Run("raw protocols", func(t *testing.T) {
+		clients := map[string]*dns.Client{
+			config.Transport.UDP.Bind: {
+				Net: "udp",
+			},
+			config.Transport.TCP.Bind: {
+				Net: "tcp",
 			},
 		}
 
-		for addr, client := range clients {
-			resp, _, err := client.ExchangeContext(ctx, msg, addr)
-			require.NoError(t, err)
-			assert.EqualValues(t, dns.RcodeNameError, resp.Rcode)
-			assert.Empty(t, resp.Answer)
-		}
-	})
-
-	t.Run("handles domain in allow list", func(t *testing.T) {
-		msg := &dns.Msg{
-			Question: []dns.Question{
-				{
-					Name:   "www.googletagmanager.com.",
-					Qtype:  dns.TypeA,
-					Qclass: dns.ClassINET,
+		t.Run("handles domain in block list", func(t *testing.T) {
+			msg := &dns.Msg{
+				MsgHdr: dns.MsgHdr{
+					Id:               uint16(rand.Intn(1 << 16)),
+					RecursionDesired: true,
 				},
-			},
-		}
-
-		for addr, client := range clients {
-			resp, _, err := client.ExchangeContext(ctx, msg, addr)
-			require.NoError(t, err)
-			assert.EqualValues(t, dns.RcodeSuccess, resp.Rcode)
-			assert.NotEmpty(t, resp.Answer)
-		}
-	})
-
-	t.Run("handles domain not in either list", func(t *testing.T) {
-		msg := &dns.Msg{
-			Question: []dns.Question{
-				{
-					Name:   "dsb.dev.",
-					Qtype:  dns.TypeA,
-					Qclass: dns.ClassINET,
+				Question: []dns.Question{
+					{
+						Name:   "00280.com.",
+						Qtype:  dns.TypeA,
+						Qclass: dns.ClassINET,
+					},
 				},
-			},
-		}
+			}
 
-		for addr, client := range clients {
-			resp, _, err := client.ExchangeContext(ctx, msg, addr)
-			require.NoError(t, err)
-			assert.EqualValues(t, dns.RcodeSuccess, resp.Rcode)
-			assert.NotEmpty(t, resp.Answer)
-		}
+			for addr, client := range clients {
+				resp, _, err := client.ExchangeContext(ctx, msg, addr)
+				require.NoError(t, err)
+				assert.EqualValues(t, dns.RcodeNameError, resp.Rcode)
+				assert.Empty(t, resp.Answer)
+			}
+		})
+
+		t.Run("handles domain in allow list", func(t *testing.T) {
+			msg := &dns.Msg{
+				MsgHdr: dns.MsgHdr{
+					Id:               uint16(rand.Intn(1 << 16)),
+					RecursionDesired: true,
+				},
+				Question: []dns.Question{
+					{
+						Name:   "www.googletagmanager.com.",
+						Qtype:  dns.TypeA,
+						Qclass: dns.ClassINET,
+					},
+				},
+			}
+
+			for addr, client := range clients {
+				resp, _, err := client.ExchangeContext(ctx, msg, addr)
+				require.NoError(t, err)
+				assert.EqualValues(t, dns.RcodeSuccess, resp.Rcode)
+				assert.NotEmpty(t, resp.Answer)
+			}
+		})
+
+		t.Run("handles domain not in either list", func(t *testing.T) {
+			msg := &dns.Msg{
+				MsgHdr: dns.MsgHdr{
+					Id:               uint16(rand.Intn(1 << 16)),
+					RecursionDesired: true,
+				},
+				Question: []dns.Question{
+					{
+						Name:   "dsb.dev.",
+						Qtype:  dns.TypeA,
+						Qclass: dns.ClassINET,
+					},
+				},
+			}
+
+			for addr, client := range clients {
+				resp, _, err := client.ExchangeContext(ctx, msg, addr)
+				require.NoError(t, err)
+				assert.EqualValues(t, dns.RcodeSuccess, resp.Rcode)
+				assert.NotEmpty(t, resp.Answer)
+			}
+		})
 	})
 
 	// Shutdown the server and give it some time to gracefully exit.

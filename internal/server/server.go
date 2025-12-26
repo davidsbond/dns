@@ -6,12 +6,13 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 
 	"github.com/miekg/dns"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/davidsbond/dns/internal/api"
+	"github.com/davidsbond/dns/internal/handler"
 	"github.com/davidsbond/dns/internal/list"
 )
 
@@ -35,7 +36,7 @@ func Run(ctx context.Context, config Config) error {
 		Level: slog.LevelInfo,
 	}))
 
-	handler := api.NewDNSAPI(allow, block, config.DNS.Upstreams, logger)
+	h := handler.New(allow, block, config.DNS.Upstreams, logger)
 
 	group, ctx := errgroup.WithContext(ctx)
 
@@ -44,7 +45,7 @@ func Run(ctx context.Context, config Config) error {
 			return runDNSServer(ctx, logger, &dns.Server{
 				Addr:    config.Transport.UDP.Bind,
 				Net:     "udp",
-				Handler: handler,
+				Handler: h,
 			})
 		})
 	}
@@ -54,7 +55,7 @@ func Run(ctx context.Context, config Config) error {
 			return runDNSServer(ctx, logger, &dns.Server{
 				Addr:    config.Transport.TCP.Bind,
 				Net:     "tcp",
-				Handler: handler,
+				Handler: h,
 			})
 		})
 	}
@@ -72,6 +73,17 @@ func Run(ctx context.Context, config Config) error {
 			return runDNSServer(ctx, logger, &dns.Server{
 				Addr:      config.Transport.DOT.Bind,
 				Net:       "tcp-tls",
+				Handler:   h,
+				TLSConfig: tlsConfig,
+			})
+		})
+	}
+
+	if config.Transport.DOH != nil {
+		group.Go(func() error {
+			return runHTTPServer(ctx, logger, &http.Server{
+				Addr:      config.Transport.DOH.Bind,
+				Handler:   h,
 				TLSConfig: tlsConfig,
 			})
 		})
@@ -98,6 +110,25 @@ func runDNSServer(ctx context.Context, logger *slog.Logger, server *dns.Server) 
 
 		log.Warn("server shutting down")
 		return server.Shutdown()
+	})
+
+	return group.Wait()
+}
+
+func runHTTPServer(ctx context.Context, logger *slog.Logger, server *http.Server) error {
+	log := logger.With("addr", server.Addr, "net", "http")
+
+	group, ctx := errgroup.WithContext(ctx)
+	group.Go(func() error {
+		log.Info("server starting")
+		return server.ListenAndServe()
+	})
+
+	group.Go(func() error {
+		<-ctx.Done()
+
+		log.Warn("server shutting down")
+		return server.Shutdown(ctx)
 	})
 
 	return group.Wait()

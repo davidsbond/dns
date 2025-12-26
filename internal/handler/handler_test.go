@@ -1,38 +1,20 @@
-package api_test
+package handler_test
 
 import (
 	"log/slog"
-	"net"
+	"math/rand"
 	"testing"
 
 	"github.com/miekg/dns"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/davidsbond/dns/internal/api"
+	"github.com/davidsbond/dns/internal/handler"
 	"github.com/davidsbond/dns/internal/list"
 	"github.com/davidsbond/x/set"
 )
 
-type (
-	MockDNSResponseWriter struct {
-		dns.ResponseWriter
-		message *dns.Msg
-	}
-)
-
-func (m *MockDNSResponseWriter) WriteMsg(msg *dns.Msg) error {
-	m.message = msg
-	return nil
-}
-
-func (m *MockDNSResponseWriter) RemoteAddr() net.Addr {
-	addr := &net.IPAddr{}
-
-	return addr
-}
-
-func TestDNSAPI_ServeDNS(t *testing.T) {
+func TestHandler_ServeDNS(t *testing.T) {
 	t.Parallel()
 
 	errorCodes := []int{dns.RcodeNotImplemented, dns.RcodeServerFailure}
@@ -58,6 +40,10 @@ func TestDNSAPI_ServeDNS(t *testing.T) {
 			Block:     block,
 			Upstreams: []string{"8.8.8.8:53", "8.8.4.4:53"},
 			Request: &dns.Msg{
+				MsgHdr: dns.MsgHdr{
+					Id:               uint16(rand.Intn(1 << 16)),
+					RecursionDesired: true,
+				},
 				Question: []dns.Question{
 					{
 						Name:   "userlocation.googleapis.com.",
@@ -73,6 +59,10 @@ func TestDNSAPI_ServeDNS(t *testing.T) {
 			Block:     block,
 			Upstreams: []string{"8.8.8.8:53", "8.8.4.4:53"},
 			Request: &dns.Msg{
+				MsgHdr: dns.MsgHdr{
+					Id:               uint16(rand.Intn(1 << 16)),
+					RecursionDesired: true,
+				},
 				Question: []dns.Question{
 					{
 						Name:   "dsb.dev.",
@@ -90,6 +80,10 @@ func TestDNSAPI_ServeDNS(t *testing.T) {
 			ExpectsError: true,
 			ExpectedCode: dns.RcodeNameError,
 			Request: &dns.Msg{
+				MsgHdr: dns.MsgHdr{
+					Id:               uint16(rand.Intn(1 << 16)),
+					RecursionDesired: true,
+				},
 				Question: []dns.Question{
 					{
 						Name:   "00280.com.",
@@ -105,6 +99,10 @@ func TestDNSAPI_ServeDNS(t *testing.T) {
 			Block:     block,
 			Upstreams: []string{"0.0.0.0:1337", "8.8.4.4:53"},
 			Request: &dns.Msg{
+				MsgHdr: dns.MsgHdr{
+					Id:               uint16(rand.Intn(1 << 16)),
+					RecursionDesired: true,
+				},
 				Question: []dns.Question{
 					{
 						Name:   "dsb.dev.",
@@ -122,6 +120,10 @@ func TestDNSAPI_ServeDNS(t *testing.T) {
 			ExpectsError: true,
 			ExpectedCode: dns.RcodeServerFailure,
 			Request: &dns.Msg{
+				MsgHdr: dns.MsgHdr{
+					Id:               uint16(rand.Intn(1 << 16)),
+					RecursionDesired: true,
+				},
 				Question: []dns.Question{
 					{
 						Name:   "dsb.dev.",
@@ -137,7 +139,7 @@ func TestDNSAPI_ServeDNS(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			w := &MockDNSResponseWriter{}
 
-			api.NewDNSAPI(tc.Allow, tc.Block, tc.Upstreams, testLogger(t)).ServeDNS(w, tc.Request)
+			handler.New(tc.Allow, tc.Block, tc.Upstreams, testLogger(t)).ServeDNS(w, tc.Request)
 
 			if tc.ExpectsError {
 				assert.EqualValues(t, tc.ExpectedCode, w.message.Rcode)
@@ -151,10 +153,10 @@ func TestDNSAPI_ServeDNS(t *testing.T) {
 }
 
 func testLogger(t *testing.T) *slog.Logger {
-	handler := slog.NewTextHandler(t.Output(), &slog.HandlerOptions{
+	h := slog.NewTextHandler(t.Output(), &slog.HandlerOptions{
 		AddSource: testing.Verbose(),
 		Level:     slog.LevelDebug,
 	})
 
-	return slog.New(handler).With("test", t.Name())
+	return slog.New(h).With("test", t.Name())
 }

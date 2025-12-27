@@ -22,6 +22,8 @@ archives:
   - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - default.toml
+      - LICENSE.md
+      - README.md
     formats:
       - zip
 
@@ -55,3 +57,5 @@ dockers_v2:
       - dns
     extra_files:
       - default.toml
+      - LICENSE.md
+      - README.md

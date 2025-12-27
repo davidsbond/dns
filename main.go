@@ -1,6 +1,7 @@
 // Package main provides the entrypoint to the dns binary.
 //
 //go:generate ./scripts/refresh_lists.sh
+//go:generate ./scripts/refresh_licenses.sh
 package main
 
 import (

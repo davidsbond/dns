@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -ex
+set -e
 
 # Download block list
 curl -sS -L -o internal/list/data/block.txt https://raw.githubusercontent.com/hagezi/dns-blocklists/refs/heads/main/domains/ultimate.txt

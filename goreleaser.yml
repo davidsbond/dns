@@ -24,6 +24,7 @@ archives:
       - default.toml
       - LICENSE.md
       - README.md
+      - licenses/*
     formats:
       - zip
 
@@ -59,3 +60,4 @@ dockers_v2:
       - default.toml
       - LICENSE.md
       - README.md
+      - licenses

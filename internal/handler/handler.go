@@ -1,5 +1,13 @@
+// Package handler provides all handling logic for DNS queries over both standard (raw TCP and UDP) and encrypted
+// (DNS-over-TLS, DNS-over-HTTPs) protocols. It includes the allow/block listing logic as well as upstream weighting
+// by round-trip-time.
 package handler
 
+// Throughout this package are comments that link specific behavior to DNS-related RFCs. These RFCs can be read at:
+// * RFC-1035 (Core DNS): 			https://www.rfc-editor.org/rfc/rfc1035.html
+// * RFC-6891 (EDNS0): 				https://www.rfc-editor.org/rfc/rfc6891.html
+// * RFC-4035 (DNSSEC signaling): 	https://www.rfc-editor.org/rfc/rfc4035.html
+// * RFC-8484 (DNS over HTTPS):		https://www.rfc-editor.org/rfc/rfc8484.html
 import (
 	"context"
 	"encoding/base64"
@@ -49,6 +57,28 @@ func New(allow, block *set.Set[string], upstreams []string, logger *slog.Logger)
 	}
 }
 
+var (
+	// We need to append this to the "Extra" section of the response whenever we have an EDNS0 version that we
+	// do not support, so we declare it once here and pass it into Handler.dnsError when required.
+	badVersionOpt = &dns.OPT{
+		Hdr: dns.RR_Header{
+			Name:   ".",
+			Rrtype: dns.TypeOPT,
+		},
+	}
+)
+
+func init() {
+	// A little dirty, but we also need to specify the version and set our payload size once for this helpful
+	// variable.
+	badVersionOpt.SetVersion(0)
+	badVersionOpt.SetUDPSize(udpPayloadSize)
+}
+
+const (
+	udpPayloadSize = 1232
+)
+
 // ServeDNS handles an inbound DNS request attempting to perform a DNS query using UDP or TCP.
 func (h *Handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -57,8 +87,15 @@ func (h *Handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	response := new(dns.Msg)
 	response.SetReply(r)
 
+	// RFC-6891 (6.1.3): If a responder does not implement the requested EDNS version,it MUST respond with RCODE=BADVERS.
+	if opt := r.IsEdns0(); opt != nil && opt.Version() != 0 {
+		h.dnsError(w, r, dns.RcodeBadVers, badVersionOpt)
+		return
+	}
+
+	// RFC-1035 (4.1.2): While the protocol allows multiple questions per message, most resolvers do not support this
+	// and return NOTIMP.
 	if len(r.Question) != 1 {
-		// Handling multiple questions per request is typically not supported.
 		h.dnsError(w, r, dns.RcodeNotImplemented)
 		return
 	}
@@ -66,6 +103,7 @@ func (h *Handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	question := r.Question[0]
 	name := strings.TrimSuffix(strings.ToLower(question.Name), ".")
 
+	// RFC-1035 (4.3.1): NXDOMAIN indicates that the domain name does not exist. Used here for policy-based blocking.
 	if h.block.Contains(name) && !h.allow.Contains(name) {
 		h.dnsError(w, r, dns.RcodeNameError)
 		return
@@ -86,6 +124,7 @@ func (h *Handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	const maxBytes = 4096
 
+	// RFC-8484 (4): DNS-over-HTTPS supports both GET and POST methods.
 	if r.Method != http.MethodPost && r.Method != http.MethodGet {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		return
@@ -106,6 +145,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// DNS-over-HTTPs allows both POST and GET requests. If we're using a POST request we'll want to read directly
 	// from the request body.
 	if r.Method == http.MethodPost {
+		// RFC-8484 (4.1): POST requests MUST use Content-Type: application/dns-message.
 		if r.Header.Get("Content-Type") != "application/dns-message" {
 			http.Error(w, http.StatusText(http.StatusUnsupportedMediaType), http.StatusUnsupportedMediaType)
 			return
@@ -134,6 +174,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// RFC-8484 (4.1): GET requests encode the DNS message using base64 in the "dns" query parameter.
 		data, err = base64.RawURLEncoding.DecodeString(query)
 		if err != nil {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
@@ -146,11 +187,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// From this point on, we're always responding with an HTTP 200 and the DNS-encoded messages, so we set the headers
-	// now for all possible DNS responses.
+	// RFC-8484 (5): DNS responses are always returned with HTTP 200.
 	w.Header().Set("Content-Type", "application/dns-message")
 	w.Header().Set("Cache-Control", "no-store")
 
+	// RFC-6891 (6.1.3): If a responder does not implement the requested EDNS version, it MUST respond with BADVERS.
+	if opt := req.IsEdns0(); opt != nil && opt.Version() != 0 {
+		h.dnsError(w, req, dns.RcodeBadVers, badVersionOpt)
+		return
+	}
+
+	// RFC-1035 (4.1.2): While the protocol allows multiple questions per message, most resolvers do not support this
+	// and return NOTIMP.
 	if len(req.Question) != 1 {
 		h.dnsError(w, req, dns.RcodeNotImplemented)
 		return
@@ -159,6 +207,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	question := req.Question[0]
 	name := strings.TrimSuffix(strings.ToLower(question.Name), ".")
 
+	// RFC-1035 (4.3.1): NXDOMAIN indicates that the domain name does not exist. Used here for  policy-based blocking.
 	if h.block.Contains(name) && !h.allow.Contains(name) {
 		h.dnsError(w, req, dns.RcodeNameError)
 		return
@@ -181,10 +230,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) dnsError(w io.Writer, r *dns.Msg, code int) {
+func (h *Handler) dnsError(w io.Writer, r *dns.Msg, code int, extra ...dns.RR) {
 	response := new(dns.Msg)
 	response.SetReply(r)
 	response.SetRcode(r, code)
+
+	response.Extra = append(response.Extra, extra...)
 
 	data, err := response.Pack()
 	if err != nil {
@@ -200,10 +251,8 @@ func (h *Handler) dnsError(w io.Writer, r *dns.Msg, code int) {
 }
 
 func (h *Handler) dnsUpstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error) {
-	const udpSize = 1232
-
-	// Before we upstream a DNS request, we'll cap the UDP size to prevent the upstream from sending large
-	// or fragmented messages.
+	// RFC-6891 (6.2.3): EDNS allows clients to advertise a larger UDP payload size. We cap this to 1232 bytes to avoid
+	// IP fragmentation.
 	opt := r.IsEdns0()
 	if opt == nil {
 		opt = &dns.OPT{
@@ -216,8 +265,8 @@ func (h *Handler) dnsUpstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error)
 		r.Extra = append(r.Extra, opt)
 	}
 
-	if opt.UDPSize() < udpSize {
-		opt.SetUDPSize(udpSize)
+	if opt.UDPSize() < udpPayloadSize {
+		opt.SetUDPSize(udpPayloadSize)
 	}
 
 	// Iterate over the upstreams in ascending order of most recent round-trip-time.
@@ -230,7 +279,7 @@ func (h *Handler) dnsUpstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error)
 			continue
 		}
 
-		// The upstream has given us a truncated response, so we need to switch over to TCP to get the full response.
+		// RFC-1035 (4.2.2): If the TC (truncated) bit is set, the client should retry using TCP.
 		if resp.Truncated {
 			resp, _, err = h.tcpClient.ExchangeContext(ctx, r, upstream)
 			if err != nil {
@@ -253,17 +302,19 @@ func (h *Handler) dnsUpstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error)
 			continue
 		}
 
-		// We want to avoid sending any EDNS0 options from the upstream to avoid leaking any upstream
-		// metadata.
+		// RFC-6891 (6.1.1): EDNS0 options are hop-by-hop and MUST NOT be blindly forwarded. We strip upstream options
+		// to avoid leaking upstream metadata.
 		opt = resp.IsEdns0()
 		if opt != nil {
 			opt.Option = nil
 		}
 
-		// We need to update the flags to correspond with what this DNS server provides, rather than the
-		// upstream itself.
+		// RFC-{1035,4035}: This server is not authoritative but does provide recursion.
 		resp.Authoritative = false
 		resp.RecursionAvailable = true
+
+		// RFC-4035 (3.2.3): The AD (Authenticated Data) bit MUST only be set by a resolver that has performed DNSSEC
+		// validation itself.
 		resp.AuthenticatedData = false
 
 		return resp, nil

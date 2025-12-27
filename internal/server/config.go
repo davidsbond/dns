@@ -69,6 +69,24 @@ type (
 	}
 )
 
+// DefaultConfig returns a Config type containing default working values for the DNS server. By default, it will
+// upstream to Cloudflare using raw UDP and TCP on port 53.
+func DefaultConfig() Config {
+	return Config{
+		DNS: DNSConfig{
+			Upstreams: []string{"8.8.8.8:53", "8.8.4.4:53"},
+		},
+		Transport: TransportConfig{
+			UDP: &UDPConfig{
+				Bind: "0.0.0.0:53",
+			},
+			TCP: &TCPConfig{
+				Bind: "0.0.0.0:53",
+			},
+		},
+	}
+}
+
 // LoadConfig the configuration file at the specified path. The configuration file is expected in TOML format.
 func LoadConfig(path string) (Config, error) {
 	var config Config

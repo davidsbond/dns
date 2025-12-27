@@ -22,6 +22,10 @@ func main() {
 	cmd := &cobra.Command{
 		Use:   "dns",
 		Short: "An opinionated, ad-blocking DNS server",
+		Long: `This binary runs a forwarding DNS server that contains a built-in block and allow lists for known tracking 
+domains.
+
+Lists are obtained from https://github.com/hagezi/dns-blocklists and embedded directly into the binary at build-time.`,
 		CompletionOptions: cobra.CompletionOptions{
 			DisableDefaultCmd: true,
 		},

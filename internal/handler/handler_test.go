@@ -27,7 +27,7 @@ func TestHandler_ServeDNS(t *testing.T) {
 
 	tt := []struct {
 		Name         string
-		Request      *dns.Msg
+		Request      func() *dns.Msg
 		Upstreams    []string
 		Allow        *set.Set[string]
 		Block        *set.Set[string]
@@ -39,18 +39,20 @@ func TestHandler_ServeDNS(t *testing.T) {
 			Allow:     allow,
 			Block:     block,
 			Upstreams: []string{"8.8.8.8:53", "8.8.4.4:53"},
-			Request: &dns.Msg{
-				MsgHdr: dns.MsgHdr{
-					Id:               uint16(rand.Intn(1 << 16)),
-					RecursionDesired: true,
-				},
-				Question: []dns.Question{
-					{
-						Name:   "userlocation.googleapis.com.",
-						Qtype:  dns.TypeA,
-						Qclass: dns.ClassINET,
+			Request: func() *dns.Msg {
+				return &dns.Msg{
+					MsgHdr: dns.MsgHdr{
+						Id:               uint16(rand.Intn(1 << 16)),
+						RecursionDesired: true,
 					},
-				},
+					Question: []dns.Question{
+						{
+							Name:   "userlocation.googleapis.com.",
+							Qtype:  dns.TypeA,
+							Qclass: dns.ClassINET,
+						},
+					},
+				}
 			},
 		},
 		{
@@ -58,18 +60,20 @@ func TestHandler_ServeDNS(t *testing.T) {
 			Allow:     allow,
 			Block:     block,
 			Upstreams: []string{"8.8.8.8:53", "8.8.4.4:53"},
-			Request: &dns.Msg{
-				MsgHdr: dns.MsgHdr{
-					Id:               uint16(rand.Intn(1 << 16)),
-					RecursionDesired: true,
-				},
-				Question: []dns.Question{
-					{
-						Name:   "dsb.dev.",
-						Qtype:  dns.TypeA,
-						Qclass: dns.ClassINET,
+			Request: func() *dns.Msg {
+				return &dns.Msg{
+					MsgHdr: dns.MsgHdr{
+						Id:               uint16(rand.Intn(1 << 16)),
+						RecursionDesired: true,
 					},
-				},
+					Question: []dns.Question{
+						{
+							Name:   "dsb.dev.",
+							Qtype:  dns.TypeA,
+							Qclass: dns.ClassINET,
+						},
+					},
+				}
 			},
 		},
 		{
@@ -79,18 +83,20 @@ func TestHandler_ServeDNS(t *testing.T) {
 			Upstreams:    []string{"8.8.8.8:53", "8.8.4.4:53"},
 			ExpectsError: true,
 			ExpectedCode: dns.RcodeNameError,
-			Request: &dns.Msg{
-				MsgHdr: dns.MsgHdr{
-					Id:               uint16(rand.Intn(1 << 16)),
-					RecursionDesired: true,
-				},
-				Question: []dns.Question{
-					{
-						Name:   "00280.com.",
-						Qtype:  dns.TypeA,
-						Qclass: dns.ClassINET,
+			Request: func() *dns.Msg {
+				return &dns.Msg{
+					MsgHdr: dns.MsgHdr{
+						Id:               uint16(rand.Intn(1 << 16)),
+						RecursionDesired: true,
 					},
-				},
+					Question: []dns.Question{
+						{
+							Name:   "00280.com.",
+							Qtype:  dns.TypeA,
+							Qclass: dns.ClassINET,
+						},
+					},
+				}
 			},
 		},
 		{
@@ -98,18 +104,20 @@ func TestHandler_ServeDNS(t *testing.T) {
 			Allow:     allow,
 			Block:     block,
 			Upstreams: []string{"0.0.0.0:1337", "8.8.4.4:53"},
-			Request: &dns.Msg{
-				MsgHdr: dns.MsgHdr{
-					Id:               uint16(rand.Intn(1 << 16)),
-					RecursionDesired: true,
-				},
-				Question: []dns.Question{
-					{
-						Name:   "dsb.dev.",
-						Qtype:  dns.TypeA,
-						Qclass: dns.ClassINET,
+			Request: func() *dns.Msg {
+				return &dns.Msg{
+					MsgHdr: dns.MsgHdr{
+						Id:               uint16(rand.Intn(1 << 16)),
+						RecursionDesired: true,
 					},
-				},
+					Question: []dns.Question{
+						{
+							Name:   "dsb.dev.",
+							Qtype:  dns.TypeA,
+							Qclass: dns.ClassINET,
+						},
+					},
+				}
 			},
 		},
 		{
@@ -119,18 +127,81 @@ func TestHandler_ServeDNS(t *testing.T) {
 			Upstreams:    []string{"0.0.0.0:1337"},
 			ExpectsError: true,
 			ExpectedCode: dns.RcodeServerFailure,
-			Request: &dns.Msg{
-				MsgHdr: dns.MsgHdr{
-					Id:               uint16(rand.Intn(1 << 16)),
-					RecursionDesired: true,
-				},
-				Question: []dns.Question{
-					{
-						Name:   "dsb.dev.",
-						Qtype:  dns.TypeA,
-						Qclass: dns.ClassINET,
+			Request: func() *dns.Msg {
+				return &dns.Msg{
+					MsgHdr: dns.MsgHdr{
+						Id:               uint16(rand.Intn(1 << 16)),
+						RecursionDesired: true,
 					},
-				},
+					Question: []dns.Question{
+						{
+							Name:   "dsb.dev.",
+							Qtype:  dns.TypeA,
+							Qclass: dns.ClassINET,
+						},
+					},
+				}
+			},
+		},
+		{
+			Name:         "rejects bad edns0 versions",
+			Allow:        allow,
+			Block:        block,
+			ExpectsError: true,
+			ExpectedCode: dns.RcodeBadVers,
+			Request: func() *dns.Msg {
+				opt := &dns.OPT{
+					Hdr: dns.RR_Header{
+						Rrtype: dns.TypeOPT,
+					},
+				}
+
+				opt.SetVersion(1)
+
+				msg := &dns.Msg{
+					MsgHdr: dns.MsgHdr{
+						Id:               uint16(rand.Intn(1 << 16)),
+						RecursionDesired: true,
+					},
+					Question: []dns.Question{
+						{
+							Name:   "dsb.dev.",
+							Qtype:  dns.TypeA,
+							Qclass: dns.ClassINET,
+						},
+					},
+					Extra: []dns.RR{opt},
+				}
+
+				return msg
+			},
+		},
+		{
+			Name:         "rejects multiple questions",
+			Allow:        allow,
+			Block:        block,
+			ExpectsError: true,
+			ExpectedCode: dns.RcodeNotImplemented,
+			Upstreams:    []string{"8.8.8.8:53", "8.8.4.4:53"},
+			Request: func() *dns.Msg {
+				return &dns.Msg{
+					MsgHdr: dns.MsgHdr{
+						Id:               uint16(rand.Intn(1 << 16)),
+						RecursionDesired: true,
+					},
+					Question: []dns.Question{
+						{
+							Name:   "google.com.",
+							Qtype:  dns.TypeA,
+							Qclass: dns.ClassINET,
+						},
+						{
+							Name:   "facebook.com.",
+							Qtype:  dns.TypeA,
+							Qclass: dns.ClassINET,
+						},
+					},
+				}
 			},
 		},
 	}
@@ -139,7 +210,7 @@ func TestHandler_ServeDNS(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			w := &MockDNSResponseWriter{}
 
-			handler.New(tc.Allow, tc.Block, tc.Upstreams, testLogger(t)).ServeDNS(w, tc.Request)
+			handler.New(tc.Allow, tc.Block, tc.Upstreams, testLogger(t)).ServeDNS(w, tc.Request())
 
 			if tc.ExpectsError {
 				assert.EqualValues(t, tc.ExpectedCode, w.message.Rcode)

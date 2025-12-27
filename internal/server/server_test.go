@@ -24,6 +24,10 @@ func TestRun(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
+	ca, caKey := createCA(t)
+	certFile, keyFile := createServerTLS(t, ca, caKey)
+	clientTLS := createTLSConfig(t, ca)
+
 	config := server.Config{
 		DNS: server.DNSConfig{
 			Upstreams: []string{"1.1.1.1:53", "1.0.0.1:53", "8.8.8.8:53", "8.8.4.4:53"},
@@ -34,6 +38,13 @@ func TestRun(t *testing.T) {
 			},
 			TCP: &server.TCPConfig{
 				Bind: "127.0.0.1:4000",
+			},
+			DOT: &server.DOTConfig{
+				Bind: "127.0.0.1:4001",
+			},
+			TLS: &server.TLSConfig{
+				Cert: certFile,
+				Key:  keyFile,
 			},
 		},
 	}
@@ -56,6 +67,10 @@ func TestRun(t *testing.T) {
 			},
 			config.Transport.TCP.Bind: {
 				Net: "tcp",
+			},
+			config.Transport.DOT.Bind: {
+				Net:       "tcp-tls",
+				TLSConfig: clientTLS,
 			},
 		}
 

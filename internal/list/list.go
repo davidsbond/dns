@@ -1,5 +1,5 @@
 // Package list provides the primitives for in-memory block and allow lists for DNS resolution. By default, a very strict
-// block and allow list are embedded into the binary. These can be updated using "go generate".
+// block and allow list are embedded into the binary.
 package list
 
 import (

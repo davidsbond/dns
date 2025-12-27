@@ -2,7 +2,6 @@ project_name: "dns"
 version: 2
 builds:
   - id: dns
-    main: main.go
     binary: dns
     mod_timestamp: "{{ .CommitTimestamp }}"
     goos:

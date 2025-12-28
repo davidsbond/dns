@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/davidsbond/dns/internal/cache"
 	"github.com/davidsbond/dns/internal/handler"
 	"github.com/davidsbond/dns/internal/list"
 	"github.com/davidsbond/x/set"
@@ -208,8 +209,15 @@ func TestHandler_ServeDNS(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.Name, func(t *testing.T) {
 			w := &MockDNSResponseWriter{}
+			cfg := handler.Config{
+				Allow:     tc.Allow,
+				Block:     tc.Block,
+				Upstreams: tc.Upstreams,
+				Logger:    testLogger(t),
+				Cache:     cache.NewNoopCache(),
+			}
 
-			handler.New(tc.Allow, tc.Block, tc.Upstreams, testLogger(t)).ServeDNS(w, tc.Request())
+			handler.New(cfg).ServeDNS(w, tc.Request())
 
 			if tc.ExpectsError {
 				assert.EqualValues(t, tc.ExpectedCode, w.message.Rcode)
@@ -590,8 +598,15 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := tc.HTTPRequest(tc.DNSRequest())
+			cfg := handler.Config{
+				Allow:     tc.Allow,
+				Block:     tc.Block,
+				Upstreams: tc.Upstreams,
+				Logger:    testLogger(t),
+				Cache:     cache.NewNoopCache(),
+			}
 
-			handler.New(tc.Allow, tc.Block, tc.Upstreams, testLogger(t)).ServeHTTP(w, r)
+			handler.New(cfg).ServeHTTP(w, r)
 
 			require.EqualValues(t, tc.ExpectedHTTPCode, w.Code)
 

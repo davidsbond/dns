@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -19,6 +20,18 @@ type (
 	DNSConfig struct {
 		// The upstream DNS servers to use for allowed DNS queries.
 		Upstreams []string `toml:"upstreams"`
+		// Configuration for DNS request caching.
+		Cache *CacheConfig `toml:"cache"`
+	}
+
+	// The CacheConfig type contains fields used to configure DNS request caching.
+	CacheConfig struct {
+		// The minimum TTL for caching DNS responses from upstream. This is used to clamp TTLs to a minimum value
+		// should the TTL from the upstream be below it.
+		Min time.Duration `toml:"min"`
+		// The maximum TTL for caching DNS responses from upstream. This is used to clamp TTLs to a maximum value
+		// should the TTL from the upstream be above it.
+		Max time.Duration `toml:"max"`
 	}
 
 	// The TransportConfig type contains fields used to configure the various transport methods supported by the
@@ -75,6 +88,10 @@ func DefaultConfig() Config {
 	return Config{
 		DNS: DNSConfig{
 			Upstreams: []string{"8.8.8.8:53", "8.8.4.4:53"},
+			Cache: &CacheConfig{
+				Min: time.Minute,
+				Max: time.Hour,
+			},
 		},
 		Transport: TransportConfig{
 			UDP: &UDPConfig{
@@ -108,6 +125,14 @@ func (c *Config) Validate() error {
 func (c *DNSConfig) validate() error {
 	if len(c.Upstreams) == 0 {
 		return errors.New("no dns upstreams specified")
+	}
+
+	if c.Cache == nil {
+		return nil
+	}
+
+	if c.Cache.Max < c.Cache.Min || c.Cache.Min > c.Cache.Max {
+		return errors.New("cache's max TTL must be greater than the min TTL")
 	}
 
 	return nil

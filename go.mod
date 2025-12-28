@@ -5,6 +5,7 @@ go 1.25.1
 require (
 	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c
 	github.com/davidsbond/x v0.0.0-20251223221351-1e5e705ca202
+	github.com/dgraph-io/ristretto/v2 v2.3.0
 	github.com/miekg/dns v1.1.69
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
@@ -17,7 +18,9 @@ tool (
 )
 
 require (
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-logr/logr v1.2.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/go-licenses/v2 v2.0.1 // indirect

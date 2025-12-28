@@ -12,6 +12,7 @@ import (
 	"github.com/miekg/dns"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/davidsbond/dns/internal/cache"
 	"github.com/davidsbond/dns/internal/handler"
 	"github.com/davidsbond/dns/internal/list"
 )
@@ -36,7 +37,21 @@ func Run(ctx context.Context, config Config) error {
 		Level: slog.LevelInfo,
 	}))
 
-	h := handler.New(allow, block, config.DNS.Upstreams, logger)
+	var c handler.Cache = cache.NewNoopCache()
+	if config.DNS.Cache != nil {
+		rc := cache.NewRistrettoCache(config.DNS.Cache.Min, config.DNS.Cache.Max)
+		defer rc.Close()
+
+		c = rc
+	}
+
+	h := handler.New(handler.Config{
+		Allow:     allow,
+		Block:     block,
+		Upstreams: config.DNS.Upstreams,
+		Logger:    logger,
+		Cache:     c,
+	})
 
 	group, ctx := errgroup.WithContext(ctx)
 

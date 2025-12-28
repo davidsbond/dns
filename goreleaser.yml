@@ -21,7 +21,6 @@ builds:
 archives:
   - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
-      - default.toml
       - LICENSE.md
       - README.md
       - licenses/*
@@ -57,7 +56,6 @@ dockers_v2:
     ids:
       - dns
     extra_files:
-      - default.toml
       - LICENSE.md
       - README.md
       - licenses

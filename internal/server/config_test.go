@@ -85,6 +85,11 @@ func TestConfig_Validate(t *testing.T) {
 			File:         "no_tls.toml",
 			ExpectsError: true,
 		},
+		{
+			Name:         "invalid cache ttls",
+			File:         "bad_cache.toml",
+			ExpectsError: true,
+		},
 	}
 
 	for _, tc := range tt {

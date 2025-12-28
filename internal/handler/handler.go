@@ -36,16 +36,41 @@ type (
 		logger    *slog.Logger
 		udpClient *dns.Client
 		tcpClient *dns.Client
+		cache     Cache
+	}
+
+	// The Config type contains fields used to configure the Handler.
+	Config struct {
+		// The list of allowed domains.
+		Allow *set.Set[string]
+		// The list of blocked domains.
+		Block *set.Set[string]
+		// Upstream DNS servers to forward unblocked/allowed DNS queries to.
+		Upstreams []string
+		// The logger to use for errors.
+		Logger *slog.Logger
+		// The cache to use for reducing upstream DNS calls.
+		Cache Cache
+	}
+
+	// The Cache interface describes types that can cache pairs of DNS requests and responses. Cache implementations
+	// should be DNS aware, handling flags & TTLs appropriately.
+	Cache interface {
+		// Put should place a request-response combination into the cache.
+		Put(req, resp *dns.Msg)
+		// Get should obtain a response from the cache based on the given request. The second return value indicates
+		// presence in the cache.
+		Get(req *dns.Msg) (*dns.Msg, bool)
 	}
 )
 
-// New returns a new instance of the Handler type configured with the provided allow & block lists, desired
-// upstream DNS servers and logger. This can be assigned to the Handler field of the dns.Server type.
-func New(allow, block *set.Set[string], upstreams []string, logger *slog.Logger) *Handler {
+// New returns a new instance of the Handler type based on the given configuration. This can be assigned to the Handler
+// field of the dns.Server and http.Server types.
+func New(config Config) *Handler {
 	return &Handler{
-		allow:  allow,
-		block:  block,
-		logger: logger,
+		allow:  config.Allow,
+		block:  config.Block,
+		logger: config.Logger,
 
 		// We have a UDP client which we always use first, then a TCP client when we get truncated responses from
 		// the upstream.
@@ -54,7 +79,11 @@ func New(allow, block *set.Set[string], upstreams []string, logger *slog.Logger)
 
 		// We want to weight the upstream DNS servers by their round-trip duration in ascending order, so the historically
 		// fastest DNS upstream is always tried first.
-		upstreams: weightslice.New[string, time.Duration](upstreams, weightslice.Ascending),
+		upstreams: weightslice.New[string, time.Duration](config.Upstreams, weightslice.Ascending),
+
+		// We use an in-memory cache for reducing the number of upstream calls as DNS can be a very noisy protocol for
+		// regular use.
+		cache: config.Cache,
 	}
 }
 
@@ -249,6 +278,11 @@ func (h *Handler) dnsError(w io.Writer, r *dns.Msg, code int, extra ...dns.RR) {
 }
 
 func (h *Handler) dnsUpstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error) {
+	// Skip the upstreams if we have this response in the cache already.
+	if resp, ok := h.cache.Get(r); ok {
+		return resp, nil
+	}
+
 	// Iterate over the upstreams in ascending order of most recent round-trip-time.
 	for i, upstream := range h.upstreams.Range() {
 		// For safety, we'll use a copy of the request in case calls to ExchangeContext perform any mutations on the
@@ -328,6 +362,8 @@ func (h *Handler) dnsUpstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error)
 		// validation itself.
 		resp.AuthenticatedData = false
 
+		// At this point, we can cache the request/response combination for faster subsequent queries of this domain.
+		h.cache.Put(r, resp)
 		return resp, nil
 	}
 

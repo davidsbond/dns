@@ -16,6 +16,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -83,9 +84,6 @@ const (
 func (h *Handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-
-	response := new(dns.Msg)
-	response.SetReply(r)
 
 	// RFC-6891 (6.1.3): If a responder does not implement the requested EDNS version,it MUST respond with RCODE=BADVERS.
 	if opt := r.IsEdns0(); opt != nil && opt.Version() != 0 {
@@ -251,29 +249,33 @@ func (h *Handler) dnsError(w io.Writer, r *dns.Msg, code int, extra ...dns.RR) {
 }
 
 func (h *Handler) dnsUpstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error) {
-	// RFC-6891 (6.2.3): EDNS allows clients to advertise a larger UDP payload size. We cap this to 1232 bytes to avoid
-	// IP fragmentation.
-	opt := r.IsEdns0()
-	if opt == nil {
-		opt = &dns.OPT{
-			Hdr: dns.RR_Header{
-				Name:   ".",
-				Rrtype: dns.TypeOPT,
-			},
-		}
-
-		r.Extra = append(r.Extra, opt)
-	}
-
-	if opt.UDPSize() < udpPayloadSize {
-		opt.SetUDPSize(udpPayloadSize)
-	}
-
 	// Iterate over the upstreams in ascending order of most recent round-trip-time.
 	for i, upstream := range h.upstreams.Range() {
-		logger := h.logger.With("upstream", upstream)
+		// For safety, we'll use a copy of the request in case calls to ExchangeContext perform any mutations on the
+		// request that we don't want to propagate to other upstreams, likely not necessary but defensive.
+		request := r.Copy()
 
-		resp, rtt, err := h.udpClient.ExchangeContext(ctx, r, upstream)
+		// RFC-6891 (6.2.3): EDNS allows clients to advertise a larger UDP payload size. We cap this to 1232 bytes to avoid
+		// IP fragmentation.
+		opt := request.IsEdns0()
+		if opt == nil {
+			opt = &dns.OPT{
+				Hdr: dns.RR_Header{
+					Name:   ".",
+					Rrtype: dns.TypeOPT,
+				},
+			}
+
+			request.Extra = append(request.Extra, opt)
+		}
+
+		if opt.UDPSize() < udpPayloadSize {
+			opt.SetUDPSize(udpPayloadSize)
+		}
+
+		logger := h.logger.With("upstream", upstream, "name", request.Question[0].Name)
+
+		resp, rtt, err := h.udpClient.ExchangeContext(ctx, request, upstream)
 		if err != nil {
 			logger.With("error", err).Error("failed to upstream DNS request")
 			continue
@@ -281,32 +283,41 @@ func (h *Handler) dnsUpstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error)
 
 		// RFC-1035 (4.2.2): If the TC (truncated) bit is set, the client should retry using TCP.
 		if resp.Truncated {
-			resp, _, err = h.tcpClient.ExchangeContext(ctx, r, upstream)
+			resp, _, err = h.tcpClient.ExchangeContext(ctx, request, upstream)
 			if err != nil {
 				logger.With("error", err).Error("failed to upstream DNS request")
 				continue
 			}
-		}
 
-		// Update the weighting for this upstream based on its round-trip time. We always want to use the known
-		// fastest upstream first. Since these are all initialized with a weight of zero we'll always pick ones
-		// we've not used yet until all have been used at least once and a weighting has been set.
-		h.upstreams.SetWeight(i, rtt)
+			// If the TCP response has also been truncated, we'll act as if we got a SERVFAIL response.
+			if resp.Truncated {
+				logger.Error("got truncated response using fallback TCP exchange")
+				continue
+			}
+		}
 
 		// If we got a successful response or that the domain name does not exist from the upstream, we forward that
 		// back to the caller. Otherwise, we try the next upstream.
 		switch resp.Rcode {
 		case dns.RcodeSuccess, dns.RcodeNameError:
-			// Pass to the client for these codes.
+			// Update the weighting for this upstream based on its round-trip time. We always want to use the known
+			// fastest upstream first. Since these are all initialized with a weight of zero we'll always pick ones
+			// we've not used yet until all have been used at least once and a weighting has been set.
+			//
+			// Here we use the round-trip time of the original UDP exchange. We do not take the TCP round-trip time
+			// into account. We also only care about the timing when we have NOERROR or NXDOMAIN.
+			h.upstreams.SetWeight(i, rtt)
 		default:
 			continue
 		}
 
 		// RFC-6891 (6.1.1): EDNS0 options are hop-by-hop and MUST NOT be blindly forwarded. We strip upstream options
 		// to avoid leaking upstream metadata.
-		opt = resp.IsEdns0()
-		if opt != nil {
-			opt.Option = nil
+		if opt = resp.IsEdns0(); opt != nil {
+			resp.Extra = slices.DeleteFunc(resp.Extra, func(rr dns.RR) bool {
+				_, ok := rr.(*dns.OPT)
+				return ok
+			})
 		}
 
 		// RFC-{1035,4035}: This server is not authoritative but does provide recursion.

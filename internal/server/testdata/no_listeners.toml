@@ -1,2 +1,2 @@
 [dns]
-upstreams = ["8.8.8.8:53"]
+upstreams = ["1.1.1.1:53"]

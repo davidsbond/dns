@@ -43,7 +43,7 @@ func TestHandler_ServeDNS(t *testing.T) {
 			Name:      "upstreams allowed domains",
 			Allow:     allow,
 			Block:     block,
-			Upstreams: []string{"8.8.8.8:53", "8.8.4.4:53"},
+			Upstreams: []string{"1.1.1.1:53", "1.0.0.1:53"},
 			Request: func() *dns.Msg {
 				return &dns.Msg{
 					MsgHdr: dns.MsgHdr{
@@ -64,7 +64,7 @@ func TestHandler_ServeDNS(t *testing.T) {
 			Name:      "upstreams non-blocked domains",
 			Allow:     allow,
 			Block:     block,
-			Upstreams: []string{"8.8.8.8:53", "8.8.4.4:53"},
+			Upstreams: []string{"1.1.1.1:53", "1.0.0.1:53"},
 			Request: func() *dns.Msg {
 				return &dns.Msg{
 					MsgHdr: dns.MsgHdr{
@@ -85,7 +85,7 @@ func TestHandler_ServeDNS(t *testing.T) {
 			Name:         "prevents blocked domains",
 			Allow:        allow,
 			Block:        block,
-			Upstreams:    []string{"8.8.8.8:53", "8.8.4.4:53"},
+			Upstreams:    []string{"1.1.1.1:53", "1.0.0.1:53"},
 			ExpectsError: true,
 			ExpectedCode: dns.RcodeNameError,
 			Request: func() *dns.Msg {
@@ -108,7 +108,7 @@ func TestHandler_ServeDNS(t *testing.T) {
 			Name:      "attempts multiple upstreams",
 			Allow:     allow,
 			Block:     block,
-			Upstreams: []string{"0.0.0.0:1337", "8.8.4.4:53"},
+			Upstreams: []string{"0.0.0.0:1337", "1.0.0.1:53"},
 			Request: func() *dns.Msg {
 				return &dns.Msg{
 					MsgHdr: dns.MsgHdr{
@@ -182,7 +182,7 @@ func TestHandler_ServeDNS(t *testing.T) {
 			Block:        block,
 			ExpectsError: true,
 			ExpectedCode: dns.RcodeNotImplemented,
-			Upstreams:    []string{"8.8.8.8:53", "8.8.4.4:53"},
+			Upstreams:    []string{"1.1.1.1:53", "1.0.0.1:53"},
 			Request: func() *dns.Msg {
 				return &dns.Msg{
 					MsgHdr: dns.MsgHdr{
@@ -259,7 +259,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			Name:             "upstreams allowed domains",
 			Allow:            allow,
 			Block:            block,
-			Upstreams:        []string{"8.8.8.8:53", "8.8.4.4:53"},
+			Upstreams:        []string{"1.1.1.1:53", "1.0.0.1:53"},
 			ExpectedHTTPCode: http.StatusOK,
 			HTTPRequest: func(m *dns.Msg) *http.Request {
 				data, err := m.Pack()
@@ -289,7 +289,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			Name:             "upstreams non-blocked domains",
 			Allow:            allow,
 			Block:            block,
-			Upstreams:        []string{"8.8.8.8:53", "8.8.4.4:53"},
+			Upstreams:        []string{"1.1.1.1:53", "1.0.0.1:53"},
 			ExpectedHTTPCode: http.StatusOK,
 			HTTPRequest: func(m *dns.Msg) *http.Request {
 				data, err := m.Pack()
@@ -319,7 +319,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			Name:             "prevents blocked domains",
 			Allow:            allow,
 			Block:            block,
-			Upstreams:        []string{"8.8.8.8:53", "8.8.4.4:53"},
+			Upstreams:        []string{"1.1.1.1:53", "1.0.0.1:53"},
 			ExpectsError:     true,
 			ExpectedDNSCode:  dns.RcodeNameError,
 			ExpectedHTTPCode: http.StatusOK,
@@ -351,7 +351,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			Name:             "attempts multiple upstreams",
 			Allow:            allow,
 			Block:            block,
-			Upstreams:        []string{"0.0.0.0:1337", "8.8.4.4:53"},
+			Upstreams:        []string{"0.0.0.0:1337", "1.0.0.1:53"},
 			ExpectedHTTPCode: http.StatusOK,
 			HTTPRequest: func(m *dns.Msg) *http.Request {
 				data, err := m.Pack()
@@ -452,7 +452,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			Block:            block,
 			ExpectsError:     true,
 			ExpectedDNSCode:  dns.RcodeNotImplemented,
-			Upstreams:        []string{"8.8.8.8:53", "8.8.4.4:53"},
+			Upstreams:        []string{"1.1.1.1:53", "1.0.0.1:53"},
 			ExpectedHTTPCode: http.StatusOK,
 			HTTPRequest: func(m *dns.Msg) *http.Request {
 				data, err := m.Pack()
@@ -568,7 +568,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			Name:             "upstreams via HTTP GET",
 			Allow:            allow,
 			Block:            block,
-			Upstreams:        []string{"8.8.8.8:53", "8.8.4.4:53"},
+			Upstreams:        []string{"1.1.1.1:53", "1.0.0.1:53"},
 			ExpectedHTTPCode: http.StatusOK,
 			HTTPRequest: func(m *dns.Msg) *http.Request {
 				data, err := m.Pack()

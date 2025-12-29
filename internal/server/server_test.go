@@ -30,7 +30,7 @@ func TestRun(t *testing.T) {
 
 	config := server.Config{
 		DNS: server.DNSConfig{
-			Upstreams: []string{"1.1.1.1:53", "1.0.0.1:53", "8.8.8.8:53", "8.8.4.4:53"},
+			Upstreams: []string{"1.1.1.1:53", "1.0.0.1:53", "1.1.1.1:53", "1.0.0.1:53"},
 			Cache: &server.CacheConfig{
 				Min: time.Minute,
 				Max: time.Hour,

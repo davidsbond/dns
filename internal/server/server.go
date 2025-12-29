@@ -78,7 +78,7 @@ func Run(ctx context.Context, config Config) error {
 
 	if config.Transport.DOT != nil {
 		group.Go(func() error {
-			tlsConfig, err := loadTLSConfig(config.Transport.TLS.Cert, config.Transport.TLS.Key)
+			tlsConfig, err := loadTLSConfig(config.Transport.DOT.TLS.Cert, config.Transport.DOT.TLS.Key)
 			if err != nil {
 				return fmt.Errorf("failed to load tls config: %w", err)
 			}
@@ -95,8 +95,8 @@ func Run(ctx context.Context, config Config) error {
 	if config.Transport.DOH != nil {
 		group.Go(func() error {
 			var tlsConfig *tls.Config
-			if config.Transport.TLS != nil && !config.Transport.DOH.DeferTLS {
-				tlsConfig, err = loadTLSConfig(config.Transport.TLS.Cert, config.Transport.TLS.Key)
+			if config.Transport.DOH.TLS != nil && !config.Transport.DOH.DeferTLS {
+				tlsConfig, err = loadTLSConfig(config.Transport.DOH.TLS.Cert, config.Transport.DOH.TLS.Key)
 				if err != nil {
 					return fmt.Errorf("failed to load tls config: %w", err)
 				}

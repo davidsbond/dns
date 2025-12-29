@@ -34,11 +34,19 @@ func TestLoadConfig(t *testing.T) {
 				Transport: server.TransportConfig{
 					UDP: &server.UDPConfig{Bind: "127.0.0.1:53"},
 					TCP: &server.TCPConfig{Bind: "127.0.0.1:53"},
-					DOT: &server.DOTConfig{Bind: "127.0.0.1:853"},
-					DOH: &server.DOHConfig{Bind: "127.0.0.1:443", DeferTLS: true},
-					TLS: &server.TLSConfig{
-						Cert: "path/to/cert.pem",
-						Key:  "path/to/key.pem",
+					DOT: &server.DOTConfig{
+						Bind: "127.0.0.1:853",
+						TLS: &server.TLSConfig{
+							Cert: "path/to/cert.pem",
+							Key:  "path/to/key.pem",
+						},
+					},
+					DOH: &server.DOHConfig{
+						Bind: "127.0.0.1:443",
+						TLS: &server.TLSConfig{
+							Cert: "path/to/cert.pem",
+							Key:  "path/to/key.pem",
+						},
 					},
 				},
 			},

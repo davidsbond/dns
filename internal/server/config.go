@@ -45,8 +45,6 @@ type (
 		DOT *DOTConfig `toml:"dot"`
 		// Enables DNS-over-HTTPs. When not nil, the TLS field must be populated.
 		DOH *DOHConfig `toml:"doh"`
-		// Contains fields for configuring TLS. Must be set when using DNS-over-TLS or DNS-over-HTTPs.
-		TLS *TLSConfig `toml:"tls"`
 	}
 
 	// The UDPConfig type contains fields for configuring the UDP listener.
@@ -65,6 +63,8 @@ type (
 	DOTConfig struct {
 		// The bind address of the DNS-over-TLS listener.
 		Bind string `toml:"bind"`
+		// Contains fields for configuring TLS.
+		TLS *TLSConfig `toml:"tls"`
 	}
 
 	// The DOHConfig type contains fields for configuring the DNS-over-HTTPs listener.
@@ -74,6 +74,8 @@ type (
 		// Whether to defer TLS termination to a reverse proxy in front of the server. Effectively converts
 		// DNS-over-HTTPs to DNS-over-HTTP instead.
 		DeferTLS bool `toml:"defer-tls"`
+		// Contains fields for configuring TLS.
+		TLS *TLSConfig `toml:"tls"`
 	}
 
 	// The TLSConfig type contains fields for configuring TLS for DNS-over-TLS or DNS-over-HTTPs.
@@ -149,13 +151,17 @@ func (t *TransportConfig) validate() error {
 
 	// If we're enabling DNS-over-HTTPs and not deferring the TLS termination to a reverse proxy, we must have the
 	// "tls" section of the configuration available.
-	if (t.DOH != nil && !t.DOH.DeferTLS) && t.TLS == nil {
+	if (t.DOH != nil && !t.DOH.DeferTLS) && t.DOH.TLS == nil {
+		return errors.New("tls cert & key must be specified when using dns over HTTPs without deferral")
+	}
+
+	if (t.DOH != nil && !t.DOH.DeferTLS && t.DOH.TLS != nil) && (t.DOH.TLS.Cert == "" || t.DOH.TLS.Key == "") {
 		return errors.New("tls cert & key must be specified when using dns over HTTPs without deferral")
 	}
 
 	// For DNS-over-TLS, there's not much point in adding a defer flag, since the caller can just do this themselves
 	// with a reverse proxy and go straight to the regular TCP endpoint.
-	if t.DOT != nil && t.TLS == nil {
+	if t.DOT != nil && t.DOT.TLS == nil {
 		return errors.New("tls cert & key must be specified when using dns over TLS")
 	}
 
@@ -173,10 +179,6 @@ func (t *TransportConfig) validate() error {
 
 	if t.DOT != nil && t.DOT.Bind == "" {
 		return errors.New("dot bind address must be specified when using dns over TLS")
-	}
-
-	if t.TLS != nil && (t.TLS.Cert == "" || t.TLS.Key == "") {
-		return errors.New("tls cert and key must be specified when using tls")
 	}
 
 	return nil

@@ -45,14 +45,14 @@ func TestRun(t *testing.T) {
 			},
 			DOT: &server.DOTConfig{
 				Bind: "127.0.0.1:4001",
+				TLS: &server.TLSConfig{
+					Cert: certFile,
+					Key:  keyFile,
+				},
 			},
 			DOH: &server.DOHConfig{
 				Bind:     "127.0.0.1:4002",
 				DeferTLS: true,
-			},
-			TLS: &server.TLSConfig{
-				Cert: certFile,
-				Key:  keyFile,
 			},
 		},
 	}

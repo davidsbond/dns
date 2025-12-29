@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -75,16 +76,13 @@ func Run(ctx context.Context, config Config) error {
 		})
 	}
 
-	var tlsConfig *tls.Config
-	if config.Transport.TLS != nil {
-		tlsConfig, err = loadTLSConfig(config.Transport.TLS.Cert, config.Transport.TLS.Key)
-		if err != nil {
-			return fmt.Errorf("failed to load tls config: %w", err)
-		}
-	}
-
 	if config.Transport.DOT != nil {
 		group.Go(func() error {
+			tlsConfig, err := loadTLSConfig(config.Transport.TLS.Cert, config.Transport.TLS.Key)
+			if err != nil {
+				return fmt.Errorf("failed to load tls config: %w", err)
+			}
+
 			return runDNSServer(ctx, logger, &dns.Server{
 				Addr:      config.Transport.DOT.Bind,
 				Net:       "tcp-tls",
@@ -96,6 +94,14 @@ func Run(ctx context.Context, config Config) error {
 
 	if config.Transport.DOH != nil {
 		group.Go(func() error {
+			var tlsConfig *tls.Config
+			if config.Transport.TLS != nil && !config.Transport.DOH.DeferTLS {
+				tlsConfig, err = loadTLSConfig(config.Transport.TLS.Cert, config.Transport.TLS.Key)
+				if err != nil {
+					return fmt.Errorf("failed to load tls config: %w", err)
+				}
+			}
+
 			return runHTTPServer(ctx, logger, &http.Server{
 				Addr:      config.Transport.DOH.Bind,
 				Handler:   h,
@@ -136,7 +142,13 @@ func runHTTPServer(ctx context.Context, logger *slog.Logger, server *http.Server
 	group, ctx := errgroup.WithContext(ctx)
 	group.Go(func() error {
 		log.Info("server starting")
-		return server.ListenAndServe()
+
+		err := server.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+
+		return err
 	})
 
 	group.Go(func() error {

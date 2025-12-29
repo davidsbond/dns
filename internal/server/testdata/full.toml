@@ -1,6 +1,10 @@
 [dns]
 upstreams = ["8.8.8.8:53", "8.8.4.4:53"]
 
+[dns.cache]
+min = "1m"
+max = "1h"
+
 [transport.udp]
 bind = "127.0.0.1:53"
 
@@ -12,6 +16,7 @@ bind = "127.0.0.1:853"
 
 [transport.doh]
 bind = "127.0.0.1:443"
+defer-tls = true
 
 [transport.tls]
 cert = "path/to/cert.pem"

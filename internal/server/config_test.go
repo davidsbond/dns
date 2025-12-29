@@ -3,6 +3,7 @@ package server_test
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,12 +26,16 @@ func TestLoadConfig(t *testing.T) {
 			Expected: server.Config{
 				DNS: server.DNSConfig{
 					Upstreams: []string{"8.8.8.8:53", "8.8.4.4:53"},
+					Cache: &server.CacheConfig{
+						Min: time.Minute,
+						Max: time.Hour,
+					},
 				},
 				Transport: server.TransportConfig{
 					UDP: &server.UDPConfig{Bind: "127.0.0.1:53"},
 					TCP: &server.TCPConfig{Bind: "127.0.0.1:53"},
 					DOT: &server.DOTConfig{Bind: "127.0.0.1:853"},
-					DOH: &server.DOHConfig{Bind: "127.0.0.1:443"},
+					DOH: &server.DOHConfig{Bind: "127.0.0.1:443", DeferTLS: true},
 					TLS: &server.TLSConfig{
 						Cert: "path/to/cert.pem",
 						Key:  "path/to/key.pem",
@@ -89,6 +94,16 @@ func TestConfig_Validate(t *testing.T) {
 			Name:         "invalid cache ttls",
 			File:         "bad_cache.toml",
 			ExpectsError: true,
+		},
+		{
+			Name:         "dns-over-https without defer and no tls",
+			File:         "bad_doh.toml",
+			ExpectsError: true,
+		},
+		{
+			Name:         "valid config",
+			File:         "full.toml",
+			ExpectsError: false,
 		},
 	}
 

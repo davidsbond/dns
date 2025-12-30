@@ -3,7 +3,7 @@ module github.com/davidsbond/dns
 go 1.25.1
 
 require (
-	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c
+	github.com/BurntSushi/toml v1.6.0
 	github.com/davidsbond/x v0.0.0-20251223221351-1e5e705ca202
 	github.com/dgraph-io/ristretto/v2 v2.3.0
 	github.com/miekg/dns v1.1.69

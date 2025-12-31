@@ -34,8 +34,8 @@ type (
 		block     *set.Set[string]
 		upstreams *weightslice.Slice[string, time.Duration]
 		logger    *slog.Logger
-		udpClient *dns.Client
-		tcpClient *dns.Client
+		udpClient DNSClient
+		tcpClient DNSClient
 		cache     Cache
 	}
 
@@ -51,6 +51,9 @@ type (
 		Logger *slog.Logger
 		// The cache to use for reducing upstream DNS calls.
 		Cache Cache
+		// Function  used to create DNS clients for upstreaming requests. This is typically used to swap out upstream calls
+		// with mock clients in tests. For normal usage, use ClientFunc.
+		ClientFunc func(net string, timeout time.Duration) DNSClient
 	}
 
 	// The Cache interface describes types that can cache pairs of DNS requests and responses. Cache implementations
@@ -62,7 +65,19 @@ type (
 		// presence in the cache.
 		Get(req *dns.Msg) (*dns.Msg, bool)
 	}
+
+	// The DNSClient interface describes types that can perform DNS query exchanges.
+	DNSClient interface {
+		// ExchangeContext should perform  DNS exchange for the given dns.Msg and address, returning the response
+		// round-trip time and any errors.
+		ExchangeContext(ctx context.Context, r *dns.Msg, addr string) (*dns.Msg, time.Duration, error)
+	}
 )
+
+// ClientFunc returns a DNSClient implementation using the dns.Client type.
+func ClientFunc(net string, timeout time.Duration) DNSClient {
+	return &dns.Client{Net: net, Timeout: timeout}
+}
 
 // New returns a new instance of the Handler type based on the given configuration. This can be assigned to the Handler
 // field of the dns.Server and http.Server types.
@@ -74,8 +89,8 @@ func New(config Config) *Handler {
 
 		// We have a UDP client which we always use first, then a TCP client when we get truncated responses from
 		// the upstream.
-		udpClient: &dns.Client{Net: "udp", Timeout: time.Minute},
-		tcpClient: &dns.Client{Net: "tcp", Timeout: time.Minute},
+		udpClient: config.ClientFunc("udp", time.Minute),
+		tcpClient: config.ClientFunc("tcp", time.Minute),
 
 		// We want to weight the upstream DNS servers by their round-trip duration in ascending order, so the historically
 		// fastest DNS upstream is always tried first.
@@ -114,16 +129,7 @@ func (h *Handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	// RFC-6891 (6.1.3): If a responder does not implement the requested EDNS version,it MUST respond with RCODE=BADVERS.
-	if opt := r.IsEdns0(); opt != nil && opt.Version() != 0 {
-		h.dnsError(w, r, dns.RcodeBadVers, badVersionOpt)
-		return
-	}
-
-	// RFC-1035 (4.1.2): While the protocol allows multiple questions per message, most resolvers do not support this
-	// and return NOTIMP.
-	if len(r.Question) != 1 {
-		h.dnsError(w, r, dns.RcodeNotImplemented)
+	if !h.validate(w, r) {
 		return
 	}
 
@@ -136,7 +142,7 @@ func (h *Handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		return
 	}
 
-	resp, err := h.dnsUpstream(ctx, r)
+	resp, err := h.upstream(ctx, r)
 	if err != nil {
 		h.dnsError(w, r, dns.RcodeServerFailure)
 		return
@@ -181,9 +187,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reader := http.MaxBytesReader(w, r.Body, maxBytes)
 		defer reader.Close()
 
+		var mbe *http.MaxBytesError
 		data, err = io.ReadAll(reader)
 		switch {
-		case errors.Is(err, &http.MaxBytesError{}):
+		case errors.As(err, &mbe):
 			http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
 			return
 		case err != nil:
@@ -218,16 +225,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/dns-message")
 	w.Header().Set("Cache-Control", "no-store")
 
-	// RFC-6891 (6.1.3): If a responder does not implement the requested EDNS version, it MUST respond with BADVERS.
-	if opt := req.IsEdns0(); opt != nil && opt.Version() != 0 {
-		h.dnsError(w, req, dns.RcodeBadVers, badVersionOpt)
-		return
-	}
-
-	// RFC-1035 (4.1.2): While the protocol allows multiple questions per message, most resolvers do not support this
-	// and return NOTIMP.
-	if len(req.Question) != 1 {
-		h.dnsError(w, req, dns.RcodeNotImplemented)
+	if !h.validate(w, req) {
 		return
 	}
 
@@ -240,7 +238,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.dnsUpstream(r.Context(), req)
+	resp, err := h.upstream(r.Context(), req)
 	if err != nil {
 		h.dnsError(w, req, dns.RcodeServerFailure)
 		return
@@ -277,7 +275,7 @@ func (h *Handler) dnsError(w io.Writer, r *dns.Msg, code int, extra ...dns.RR) {
 	}
 }
 
-func (h *Handler) dnsUpstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error) {
+func (h *Handler) upstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error) {
 	// Skip the upstreams if we have this response in the cache already.
 	if resp, ok := h.cache.Get(r); ok {
 		return resp, nil
@@ -364,8 +362,28 @@ func (h *Handler) dnsUpstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error)
 
 		// At this point, we can cache the request/response combination for faster subsequent queries of this domain.
 		h.cache.Put(r, resp)
+
 		return resp, nil
 	}
 
 	return nil, errors.New("failed querying all upstream DNS servers")
+}
+
+func (h *Handler) validate(w io.Writer, r *dns.Msg) bool {
+	// RFC-6891 (6.1.3): If a responder does not implement the requested EDNS version,it MUST respond with RCODE=BADVERS.
+	if opt := r.IsEdns0(); opt != nil && opt.Version() != 0 {
+		h.dnsError(w, r, dns.RcodeBadVers, badVersionOpt)
+
+		return false
+	}
+
+	// RFC-1035 (4.1.2): While the protocol allows multiple questions per message, most resolvers do not support this
+	// and return NOTIMP.
+	if len(r.Question) != 1 {
+		h.dnsError(w, r, dns.RcodeNotImplemented)
+
+		return false
+	}
+
+	return true
 }

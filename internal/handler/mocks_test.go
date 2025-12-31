@@ -1,9 +1,13 @@
 package handler_test
 
 import (
+	"context"
 	"net"
+	"time"
 
 	"github.com/miekg/dns"
+
+	"github.com/davidsbond/dns/internal/handler"
 )
 
 type (
@@ -31,4 +35,17 @@ func (m *MockDNSResponseWriter) RemoteAddr() net.Addr {
 	addr := &net.IPAddr{}
 
 	return addr
+}
+
+type (
+	MockDNSClient struct {
+		handler.DNSClient
+		response *dns.Msg
+		rtt      time.Duration
+		err      error
+	}
+)
+
+func (m *MockDNSClient) ExchangeContext(_ context.Context, _ *dns.Msg, _ string) (*dns.Msg, time.Duration, error) {
+	return m.response, m.rtt, m.err
 }

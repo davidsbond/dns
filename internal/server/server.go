@@ -47,11 +47,12 @@ func Run(ctx context.Context, config Config) error {
 	}
 
 	h := handler.New(handler.Config{
-		Allow:     allow,
-		Block:     block,
-		Upstreams: config.DNS.Upstreams,
-		Logger:    logger,
-		Cache:     c,
+		Allow:      allow,
+		Block:      block,
+		Upstreams:  config.DNS.Upstreams,
+		Logger:     logger,
+		Cache:      c,
+		ClientFunc: handler.ClientFunc,
 	})
 
 	group, ctx := errgroup.WithContext(ctx)

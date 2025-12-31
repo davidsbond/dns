@@ -7,7 +7,9 @@ import (
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/stretchr/testify/assert"
@@ -38,6 +40,7 @@ func TestHandler_ServeDNS(t *testing.T) {
 		Block        *set.Set[string]
 		ExpectsError bool
 		ExpectedCode int
+		Client       func(string, time.Duration) handler.DNSClient
 	}{
 		{
 			Name:      "upstreams allowed domains",
@@ -204,17 +207,54 @@ func TestHandler_ServeDNS(t *testing.T) {
 				}
 			},
 		},
+		{
+			Name:      "fallback on truncated UDP",
+			Allow:     allow,
+			Block:     block,
+			Upstreams: []string{"1.1.1.1:53", "1.0.0.1:53"},
+			Request: func() *dns.Msg {
+				return &dns.Msg{
+					MsgHdr: dns.MsgHdr{
+						Id:               uint16(rand.Intn(1 << 16)),
+						RecursionDesired: true,
+					},
+					Question: []dns.Question{
+						{
+							Name:   "dsb.dev.",
+							Qtype:  dns.TypeA,
+							Qclass: dns.ClassINET,
+						},
+					},
+				}
+			},
+			Client: func(net string, timeout time.Duration) handler.DNSClient {
+				if net == "udp" {
+					return &MockDNSClient{
+						response: &dns.Msg{
+							MsgHdr: dns.MsgHdr{Truncated: true},
+						},
+					}
+				}
+
+				return handler.ClientFunc(net, timeout)
+			},
+		},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.Name, func(t *testing.T) {
 			w := &MockDNSResponseWriter{}
 			cfg := handler.Config{
-				Allow:     tc.Allow,
-				Block:     tc.Block,
-				Upstreams: tc.Upstreams,
-				Logger:    testLogger(t),
-				Cache:     cache.NewNoopCache(),
+				Allow:      tc.Allow,
+				Block:      tc.Block,
+				Upstreams:  tc.Upstreams,
+				Logger:     testLogger(t),
+				Cache:      cache.NewNoopCache(),
+				ClientFunc: handler.ClientFunc,
+			}
+
+			if tc.Client != nil {
+				cfg.ClientFunc = tc.Client
 			}
 
 			handler.New(cfg).ServeDNS(w, tc.Request())
@@ -254,6 +294,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		ExpectsError     bool
 		ExpectedHTTPCode int
 		ExpectedDNSCode  int
+		Client           func(string, time.Duration) handler.DNSClient
 	}{
 		{
 			Name:             "upstreams allowed domains",
@@ -411,8 +452,6 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		},
 		{
 			Name:             "rejects bad edns0 versions",
-			Allow:            allow,
-			Block:            block,
 			ExpectsError:     true,
 			ExpectedDNSCode:  dns.RcodeBadVers,
 			ExpectedHTTPCode: http.StatusOK,
@@ -447,12 +486,36 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			},
 		},
 		{
+			Name:             "rejects wrong http method",
+			ExpectedHTTPCode: http.StatusMethodNotAllowed,
+			HTTPRequest: func(m *dns.Msg) *http.Request {
+				data, err := m.Pack()
+				require.NoError(t, err)
+
+				r := httptest.NewRequest(http.MethodPut, "/dns-query", bytes.NewReader(data))
+				r.Header.Set("Content-Type", "application/dns-message")
+				return r
+			},
+			DNSRequest: func() *dns.Msg {
+				return &dns.Msg{
+					MsgHdr: dns.MsgHdr{
+						Id:               uint16(rand.Intn(1 << 16)),
+						RecursionDesired: true,
+					},
+					Question: []dns.Question{
+						{
+							Name:   "google.com.",
+							Qtype:  dns.TypeA,
+							Qclass: dns.ClassINET,
+						},
+					},
+				}
+			},
+		},
+		{
 			Name:             "rejects multiple questions",
-			Allow:            allow,
-			Block:            block,
 			ExpectsError:     true,
 			ExpectedDNSCode:  dns.RcodeNotImplemented,
-			Upstreams:        []string{"1.1.1.1:53", "1.0.0.1:53"},
 			ExpectedHTTPCode: http.StatusOK,
 			HTTPRequest: func(m *dns.Msg) *http.Request {
 				data, err := m.Pack()
@@ -476,33 +539,6 @@ func TestHandler_ServeHTTP(t *testing.T) {
 						},
 						{
 							Name:   "facebook.com.",
-							Qtype:  dns.TypeA,
-							Qclass: dns.ClassINET,
-						},
-					},
-				}
-			},
-		},
-		{
-			Name:             "rejects wrong http method",
-			ExpectedHTTPCode: http.StatusMethodNotAllowed,
-			HTTPRequest: func(m *dns.Msg) *http.Request {
-				data, err := m.Pack()
-				require.NoError(t, err)
-
-				r := httptest.NewRequest(http.MethodPut, "/dns-query", bytes.NewReader(data))
-				r.Header.Set("Content-Type", "application/dns-message")
-				return r
-			},
-			DNSRequest: func() *dns.Msg {
-				return &dns.Msg{
-					MsgHdr: dns.MsgHdr{
-						Id:               uint16(rand.Intn(1 << 16)),
-						RecursionDesired: true,
-					},
-					Question: []dns.Question{
-						{
-							Name:   "google.com.",
 							Qtype:  dns.TypeA,
 							Qclass: dns.ClassINET,
 						},
@@ -565,7 +601,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			},
 		},
 		{
-			Name:             "upstreams via HTTP GET",
+			Name:             "upstreams dns via HTTP GET",
 			Allow:            allow,
 			Block:            block,
 			Upstreams:        []string{"1.1.1.1:53", "1.0.0.1:53"},
@@ -592,6 +628,77 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}
 			},
 		},
+		{
+			Name:             "rejects invalid query parameter",
+			ExpectedHTTPCode: http.StatusBadRequest,
+			ExpectsError:     true,
+			HTTPRequest: func(_ *dns.Msg) *http.Request {
+				return httptest.NewRequest(http.MethodGet, "/dns-query?dns=wrong", nil)
+			},
+			DNSRequest: func() *dns.Msg {
+				return &dns.Msg{}
+			},
+		},
+		{
+			Name:             "rejects missing query parameter",
+			ExpectedHTTPCode: http.StatusBadRequest,
+			ExpectsError:     true,
+			HTTPRequest: func(_ *dns.Msg) *http.Request {
+				return httptest.NewRequest(http.MethodGet, "/dns-query", nil)
+			},
+			DNSRequest: func() *dns.Msg {
+				return &dns.Msg{}
+			},
+		},
+		{
+			Name:             "rejects invalid request body",
+			ExpectedHTTPCode: http.StatusBadRequest,
+			ExpectsError:     true,
+			HTTPRequest: func(_ *dns.Msg) *http.Request {
+				return httptest.NewRequest(http.MethodGet, "/dns-query?dns=wrong", nil)
+			},
+			DNSRequest: func() *dns.Msg {
+				return &dns.Msg{}
+			},
+		},
+		{
+			Name:             "rejects invalid DNS message",
+			ExpectedHTTPCode: http.StatusBadRequest,
+			ExpectsError:     true,
+			HTTPRequest: func(m *dns.Msg) *http.Request {
+				return httptest.NewRequest(http.MethodGet, "/dns-query?dns="+base64.RawURLEncoding.EncodeToString([]byte("hello")), nil)
+			},
+			DNSRequest: func() *dns.Msg {
+				return &dns.Msg{}
+			},
+		},
+		{
+			Name:             "rejects invalid request body",
+			ExpectedHTTPCode: http.StatusBadRequest,
+			ExpectsError:     true,
+			HTTPRequest: func(_ *dns.Msg) *http.Request {
+				r := httptest.NewRequest(http.MethodPost, "/dns-query", bytes.NewBufferString("wrong"))
+				r.Header.Set("Content-Type", "application/dns-message")
+				return r
+			},
+			DNSRequest: func() *dns.Msg {
+				return &dns.Msg{}
+			},
+		},
+		{
+			Name:             "rejects request bodies that are too large",
+			ExpectedHTTPCode: http.StatusRequestEntityTooLarge,
+			ExpectsError:     true,
+			HTTPRequest: func(_ *dns.Msg) *http.Request {
+				data := strings.Repeat("A", 5000)
+				r := httptest.NewRequest(http.MethodPost, "/dns-query", bytes.NewBufferString(data))
+				r.Header.Set("Content-Type", "application/dns-message")
+				return r
+			},
+			DNSRequest: func() *dns.Msg {
+				return &dns.Msg{}
+			},
+		},
 	}
 
 	for _, tc := range tt {
@@ -599,11 +706,16 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := tc.HTTPRequest(tc.DNSRequest())
 			cfg := handler.Config{
-				Allow:     tc.Allow,
-				Block:     tc.Block,
-				Upstreams: tc.Upstreams,
-				Logger:    testLogger(t),
-				Cache:     cache.NewNoopCache(),
+				Allow:      tc.Allow,
+				Block:      tc.Block,
+				Upstreams:  tc.Upstreams,
+				Logger:     testLogger(t),
+				Cache:      cache.NewNoopCache(),
+				ClientFunc: handler.ClientFunc,
+			}
+
+			if tc.Client != nil {
+				cfg.ClientFunc = tc.Client
 			}
 
 			handler.New(cfg).ServeHTTP(w, r)

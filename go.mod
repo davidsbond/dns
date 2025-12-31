@@ -4,7 +4,7 @@ go 1.25.1
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/davidsbond/x v0.0.0-20251223221351-1e5e705ca202
+	github.com/davidsbond/x v0.0.0-20251223224852-3ca2b1859420
 	github.com/dgraph-io/ristretto/v2 v2.3.0
 	github.com/miekg/dns v1.1.69
 	github.com/spf13/cobra v1.10.2

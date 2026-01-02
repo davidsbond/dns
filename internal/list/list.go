@@ -24,7 +24,14 @@ func Block(ctx context.Context) (*set.Set[string], error) {
 		return nil, err
 	}
 
-	return parseEntries(ctx, file)
+	entries, err := parseEntries(ctx, file)
+	if err != nil {
+		return nil, err
+	}
+
+	domainsBlocked.Set(float64(entries.Len()))
+
+	return entries, nil
 }
 
 // Allow returns a set of all domains contained within the allow list.
@@ -34,7 +41,14 @@ func Allow(ctx context.Context) (*set.Set[string], error) {
 		return nil, err
 	}
 
-	return parseEntries(ctx, file)
+	entries, err := parseEntries(ctx, file)
+	if err != nil {
+		return nil, err
+	}
+
+	domainsAllowed.Set(float64(entries.Len()))
+
+	return entries, nil
 }
 
 func parseEntries(ctx context.Context, r io.Reader) (*set.Set[string], error) {

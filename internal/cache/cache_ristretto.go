@@ -105,6 +105,7 @@ func (c *RistrettoCache) Get(req *dns.Msg) (*dns.Msg, bool) {
 
 	original, ok := c.store.Get(key)
 	if !ok {
+		cacheMisses.Inc()
 		return nil, false
 	}
 
@@ -138,6 +139,7 @@ func (c *RistrettoCache) Get(req *dns.Msg) (*dns.Msg, bool) {
 		}
 	}
 
+	cacheHits.Inc()
 	return cached, true
 }
 

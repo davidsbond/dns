@@ -1,0 +1,12 @@
+[dns]
+upstreams = ["1.1.1.1:53", "1.0.0.1:53"]
+
+[dns.cache]
+min = "1m"
+max = "1h"
+
+[transport.udp]
+bind = "127.0.0.1:4000"
+
+[transport.tcp]
+bind = "127.0.0.1:4000"

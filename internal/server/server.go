@@ -11,6 +11,7 @@ import (
 	"os"
 
 	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/davidsbond/dns/internal/cache"
@@ -110,6 +111,10 @@ func Run(ctx context.Context, config Config) error {
 			})
 		})
 	}
+
+	handler.RegisterMetrics(prometheus.DefaultRegisterer)
+	cache.RegisterMetrics(prometheus.DefaultRegisterer)
+	list.RegisterMetrics(prometheus.DefaultRegisterer)
 
 	return group.Wait()
 }

@@ -129,16 +129,11 @@ func (h *Handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	if !h.validate(w, r) {
+	if !h.validateMsg(w, r) {
 		return
 	}
 
-	question := r.Question[0]
-	name := strings.TrimSuffix(strings.ToLower(question.Name), ".")
-
-	// RFC-1035 (4.3.1): NXDOMAIN indicates that the domain name does not exist. Used here for policy-based blocking.
-	if h.block.Contains(name) && !h.allow.Contains(name) {
-		h.dnsError(w, r, dns.RcodeNameError)
+	if !h.checkLists(w, r) {
 		return
 	}
 
@@ -151,6 +146,8 @@ func (h *Handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	if err = w.WriteMsg(resp); err != nil {
 		h.logger.With("error", err).Error("failed to write dns response")
 	}
+
+	dnsResponses.WithLabelValues(dns.RcodeToString[resp.Rcode]).Inc()
 }
 
 // ServeHTTP handles an inbound HTTP request attempting to perform a DNS query using DNS-over-HTTPs.
@@ -225,16 +222,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/dns-message")
 	w.Header().Set("Cache-Control", "no-store")
 
-	if !h.validate(w, req) {
+	if !h.validateMsg(w, req) {
 		return
 	}
 
-	question := req.Question[0]
-	name := strings.TrimSuffix(strings.ToLower(question.Name), ".")
-
-	// RFC-1035 (4.3.1): NXDOMAIN indicates that the domain name does not exist. Used here for  policy-based blocking.
-	if h.block.Contains(name) && !h.allow.Contains(name) {
-		h.dnsError(w, req, dns.RcodeNameError)
+	if !h.checkLists(w, req) {
 		return
 	}
 
@@ -253,6 +245,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if _, err = w.Write(wire); err != nil {
 		h.logger.With("error", err).Error("failed to write http response")
 	}
+
+	dnsResponses.WithLabelValues(dns.RcodeToString[resp.Rcode]).Inc()
 }
 
 func (h *Handler) dnsError(w io.Writer, r *dns.Msg, code int, extra ...dns.RR) {
@@ -273,6 +267,8 @@ func (h *Handler) dnsError(w io.Writer, r *dns.Msg, code int, extra ...dns.RR) {
 	if _, err = w.Write(data); err != nil {
 		h.logger.With("error", err, "question", r.Question[0].Name).Error("failed to respond to DNS request")
 	}
+
+	dnsResponses.WithLabelValues(dns.RcodeToString[response.Rcode]).Inc()
 }
 
 func (h *Handler) upstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error) {
@@ -313,6 +309,8 @@ func (h *Handler) upstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error) {
 			continue
 		}
 
+		dnsUpstreamed.WithLabelValues(upstream).Inc()
+
 		// RFC-1035 (4.2.2): If the TC (truncated) bit is set, the client should retry using TCP.
 		if resp.Truncated {
 			resp, _, err = h.tcpClient.ExchangeContext(ctx, request, upstream)
@@ -339,6 +337,7 @@ func (h *Handler) upstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error) {
 			// Here we use the round-trip time of the original UDP exchange. We do not take the TCP round-trip time
 			// into account. We also only care about the timing when we have NOERROR or NXDOMAIN.
 			h.upstreams.SetWeight(i, rtt)
+			dnsUpstreamSeconds.WithLabelValues(upstream).Observe(rtt.Seconds())
 		default:
 			continue
 		}
@@ -369,7 +368,7 @@ func (h *Handler) upstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error) {
 	return nil, errors.New("failed querying all upstream DNS servers")
 }
 
-func (h *Handler) validate(w io.Writer, r *dns.Msg) bool {
+func (h *Handler) validateMsg(w io.Writer, r *dns.Msg) bool {
 	// RFC-6891 (6.1.3): If a responder does not implement the requested EDNS version,it MUST respond with RCODE=BADVERS.
 	if opt := r.IsEdns0(); opt != nil && opt.Version() != 0 {
 		h.dnsError(w, r, dns.RcodeBadVers, badVersionOpt)
@@ -382,6 +381,22 @@ func (h *Handler) validate(w io.Writer, r *dns.Msg) bool {
 	if len(r.Question) != 1 {
 		h.dnsError(w, r, dns.RcodeNotImplemented)
 
+		return false
+	}
+
+	return true
+}
+
+func (h *Handler) checkLists(w io.Writer, r *dns.Msg) bool {
+	question := r.Question[0]
+	name := strings.TrimSuffix(strings.ToLower(question.Name), ".")
+
+	dnsQueries.WithLabelValues(dns.TypeToString[question.Qtype]).Inc()
+
+	// RFC-1035 (4.3.1): NXDOMAIN indicates that the domain name does not exist. Used here for  policy-based blocking.
+	if h.block.Contains(name) && !h.allow.Contains(name) {
+		dnsBlocked.Inc()
+		h.dnsError(w, r, dns.RcodeNameError)
 		return false
 	}
 

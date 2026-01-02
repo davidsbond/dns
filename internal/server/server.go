@@ -12,12 +12,19 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/davidsbond/dns/internal/cache"
 	"github.com/davidsbond/dns/internal/handler"
 	"github.com/davidsbond/dns/internal/list"
 )
+
+func init() {
+	handler.RegisterMetrics(prometheus.DefaultRegisterer)
+	cache.RegisterMetrics(prometheus.DefaultRegisterer)
+	list.RegisterMetrics(prometheus.DefaultRegisterer)
+}
 
 // Run the DNS server.
 func Run(ctx context.Context, config Config) error {
@@ -112,9 +119,14 @@ func Run(ctx context.Context, config Config) error {
 		})
 	}
 
-	handler.RegisterMetrics(prometheus.DefaultRegisterer)
-	cache.RegisterMetrics(prometheus.DefaultRegisterer)
-	list.RegisterMetrics(prometheus.DefaultRegisterer)
+	if config.Metrics != nil {
+		group.Go(func() error {
+			return runHTTPServer(ctx, logger, &http.Server{
+				Addr:    config.Metrics.Bind,
+				Handler: promhttp.Handler(),
+			})
+		})
+	}
 
 	return group.Wait()
 }

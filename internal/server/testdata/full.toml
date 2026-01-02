@@ -24,3 +24,6 @@ bind = "127.0.0.1:443"
 [transport.doh.tls]
 cert = "path/to/cert.pem"
 key = "path/to/key.pem"
+
+[metrics]
+bind = "127.0.0.1:9100"

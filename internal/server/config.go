@@ -14,6 +14,8 @@ type (
 		DNS DNSConfig `toml:"dns"`
 		// Individual transports used by the DNS server.
 		Transport TransportConfig `toml:"transport"`
+		// Prometheus metric configuration.
+		Metrics *MetricsConfig `toml:"metrics"`
 	}
 
 	// The DNSConfig type contains fields for configuring specific DNS behavior.
@@ -85,6 +87,12 @@ type (
 		// The path to the key file.
 		Key string `toml:"key"`
 	}
+
+	// The MetricsConfig type contains fields for configuring the Prometheus metrics endpoint.
+	MetricsConfig struct {
+		// The bind address of the metrics HTTP listener.
+		Bind string `toml:"bind"`
+	}
 )
 
 // DefaultConfig returns a Config type containing default working values for the DNS server. By default, it will
@@ -106,6 +114,9 @@ func DefaultConfig() Config {
 				Bind: "0.0.0.0:53",
 			},
 		},
+		Metrics: &MetricsConfig{
+			Bind: "0.0.0.0:9100",
+		},
 	}
 }
 
@@ -124,10 +135,15 @@ func (c *Config) Validate() error {
 	return errors.Join(
 		c.DNS.validate(),
 		c.Transport.validate(),
+		c.Metrics.validate(),
 	)
 }
 
 func (c *DNSConfig) validate() error {
+	if c == nil {
+		return errors.New("no DNS configuration specified")
+	}
+
 	if len(c.Upstreams) == 0 {
 		return errors.New("no dns upstreams specified")
 	}
@@ -144,6 +160,10 @@ func (c *DNSConfig) validate() error {
 }
 
 func (t *TransportConfig) validate() error {
+	if t == nil {
+		return errors.New("no transport configuration specified")
+	}
+
 	// We never want a server that does nothing at all.
 	if t.UDP == nil && t.TCP == nil && t.DOT == nil && t.DOH == nil {
 		return errors.New("at least one transport must be specified")
@@ -179,6 +199,18 @@ func (t *TransportConfig) validate() error {
 
 	if t.DOT != nil && t.DOT.Bind == "" {
 		return errors.New("dot bind address must be specified when using dns over TLS")
+	}
+
+	return nil
+}
+
+func (c *MetricsConfig) validate() error {
+	if c == nil {
+		return nil
+	}
+
+	if c.Bind == "" {
+		return errors.New("metrics bind address must be specified")
 	}
 
 	return nil

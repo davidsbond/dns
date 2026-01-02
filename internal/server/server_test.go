@@ -55,6 +55,9 @@ func TestRun(t *testing.T) {
 				DeferTLS: true,
 			},
 		},
+		Metrics: &server.MetricsConfig{
+			Bind: "127.0.0.1:9100",
+		},
 	}
 
 	group, ctx := errgroup.WithContext(ctx)

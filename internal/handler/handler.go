@@ -371,7 +371,7 @@ func (h *Handler) upstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error) {
 func (h *Handler) validateMsg(w io.Writer, r *dns.Msg) bool {
 	// RFC-6891 (6.1.3): If a responder does not implement the requested EDNS version,it MUST respond with RCODE=BADVERS.
 	if opt := r.IsEdns0(); opt != nil && opt.Version() != 0 {
-		h.dnsError(w, r, dns.RcodeBadVers, badVersionOpt)
+		h.dnsError(w, r, dns.RcodeBadVers, dns.Copy(badVersionOpt))
 
 		return false
 	}

@@ -16,6 +16,8 @@ type (
 		Transport TransportConfig `toml:"transport"`
 		// Prometheus metric configuration.
 		Metrics *MetricsConfig `toml:"metrics"`
+		// Logging configuration.
+		Logging *LoggingConfig `toml:"logging"`
 	}
 
 	// The DNSConfig type contains fields for configuring specific DNS behavior.
@@ -93,6 +95,12 @@ type (
 		// The bind address of the metrics HTTP listener.
 		Bind string `toml:"bind"`
 	}
+
+	// The LoggingConfig type contains fields for configuring the logger used by the application.
+	LoggingConfig struct {
+		// The minimum level to produce logs for.
+		Level string `toml:"level"`
+	}
 )
 
 // DefaultConfig returns a Config type containing default working values for the DNS server. By default, it will
@@ -116,6 +124,9 @@ func DefaultConfig() Config {
 		},
 		Metrics: &MetricsConfig{
 			Bind: "0.0.0.0:9100",
+		},
+		Logging: &LoggingConfig{
+			Level: "info",
 		},
 	}
 }

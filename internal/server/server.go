@@ -44,8 +44,13 @@ func Run(ctx context.Context, config Config) error {
 		return fmt.Errorf("failed to load block list: %w", err)
 	}
 
+	level := slog.LevelInfo
+	if config.Logging != nil {
+		level = levelFromString(config.Logging.Level)
+	}
+
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
+		Level: level,
 	}))
 
 	var c handler.Cache = cache.NewNoopCache()
@@ -216,4 +221,19 @@ func loadTLSConfig(certFile, keyFile string) (*tls.Config, error) {
 		MinVersion:   tls.VersionTLS12,
 		NextProtos:   []string{"h2", "http/1.1"},
 	}, nil
+}
+
+func levelFromString(level string) slog.Level {
+	switch level {
+	case "debug":
+		return slog.LevelDebug
+	case "info":
+		return slog.LevelInfo
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }

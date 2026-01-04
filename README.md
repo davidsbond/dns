@@ -67,6 +67,15 @@ defer-tls = false
 [transport.doh.tls]
 cert = "path/to/cert.pem"
 key = "path/to/key.pem"
+
+[metrics]
+# Bind address for exposing prometheus metrics.
+bind = "127.0.0.1:9100"
+
+[logging]
+# Log verbosity (debug, info, warn, error).
+level = "info"
+
 ```
 
 > [!NOTE]

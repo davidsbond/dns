@@ -58,6 +58,9 @@ func TestRun(t *testing.T) {
 		Metrics: &server.MetricsConfig{
 			Bind: "127.0.0.1:9100",
 		},
+		Logging: &server.LoggingConfig{
+			Level: "debug",
+		},
 	}
 
 	group, ctx := errgroup.WithContext(ctx)

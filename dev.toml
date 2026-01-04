@@ -13,3 +13,6 @@ bind = "127.0.0.1:4000"
 
 [metrics]
 bind = "127.0.0.1:9100"
+
+[logging]
+level = "debug"

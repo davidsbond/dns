@@ -102,24 +102,6 @@ func New(config Config) *Handler {
 	}
 }
 
-var (
-	// We need to append this to the "Extra" section of the response whenever we have an EDNS0 version that we
-	// do not support, so we declare it once here and pass it into Handler.dnsError when required.
-	badVersionOpt = &dns.OPT{
-		Hdr: dns.RR_Header{
-			Name:   ".",
-			Rrtype: dns.TypeOPT,
-		},
-	}
-)
-
-func init() {
-	// A little dirty, but we also need to specify the version and set our payload size once for this helpful
-	// variable.
-	badVersionOpt.SetVersion(0)
-	badVersionOpt.SetUDPSize(udpPayloadSize)
-}
-
 const (
 	udpPayloadSize = 1232
 )
@@ -371,8 +353,19 @@ func (h *Handler) upstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error) {
 func (h *Handler) validateMsg(w io.Writer, r *dns.Msg) bool {
 	// RFC-6891 (6.1.3): If a responder does not implement the requested EDNS version,it MUST respond with RCODE=BADVERS.
 	if opt := r.IsEdns0(); opt != nil && opt.Version() != 0 {
-		h.dnsError(w, r, dns.RcodeBadVers, dns.Copy(badVersionOpt))
+		// We need to append this to the "Extra" section of the response whenever we have an EDNS0 version that we
+		// do not support, so we declare it once here and pass it into Handler.dnsError when required.
+		badVersion := &dns.OPT{
+			Hdr: dns.RR_Header{
+				Name:   ".",
+				Rrtype: dns.TypeOPT,
+			},
+		}
 
+		badVersion.SetVersion(0)
+		badVersion.SetUDPSize(udpPayloadSize)
+
+		h.dnsError(w, r, dns.RcodeBadVers, badVersion)
 		return false
 	}
 

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,6 +19,7 @@ import (
 	"github.com/davidsbond/dns/internal/cache"
 	"github.com/davidsbond/dns/internal/handler"
 	"github.com/davidsbond/dns/internal/list"
+	"github.com/davidsbond/x/weightslice"
 )
 
 func init() {
@@ -43,7 +45,7 @@ func Run(ctx context.Context, config Config) error {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: slog.LevelDebug,
 	}))
 
 	var c handler.Cache = cache.NewNoopCache()
@@ -54,23 +56,23 @@ func Run(ctx context.Context, config Config) error {
 		c = rc
 	}
 
-	h := handler.New(handler.Config{
-		Allow:      allow,
-		Block:      block,
-		Upstreams:  config.DNS.Upstreams,
-		Logger:     logger,
-		Cache:      c,
-		ClientFunc: handler.ClientFunc,
-	})
-
+	upstreams := weightslice.New[string, time.Duration](config.DNS.Upstreams, weightslice.Ascending)
 	group, ctx := errgroup.WithContext(ctx)
 
 	if config.Transport.UDP != nil {
 		group.Go(func() error {
 			return runDNSServer(ctx, logger, &dns.Server{
-				Addr:    config.Transport.UDP.Bind,
-				Net:     "udp",
-				Handler: h,
+				Addr: config.Transport.UDP.Bind,
+				Net:  "udp",
+				Handler: handler.New(handler.Config{
+					Allow:      allow,
+					Block:      block,
+					Upstreams:  upstreams,
+					Logger:     logger.With("protocol", "udp"),
+					Cache:      c,
+					ClientFunc: handler.ClientFunc,
+					Protocol:   "udp",
+				}),
 			})
 		})
 	}
@@ -78,9 +80,17 @@ func Run(ctx context.Context, config Config) error {
 	if config.Transport.TCP != nil {
 		group.Go(func() error {
 			return runDNSServer(ctx, logger, &dns.Server{
-				Addr:    config.Transport.TCP.Bind,
-				Net:     "tcp",
-				Handler: h,
+				Addr: config.Transport.TCP.Bind,
+				Net:  "tcp",
+				Handler: handler.New(handler.Config{
+					Allow:      allow,
+					Block:      block,
+					Upstreams:  upstreams,
+					Logger:     logger.With("protocol", "tcp"),
+					Cache:      c,
+					ClientFunc: handler.ClientFunc,
+					Protocol:   "tcp",
+				}),
 			})
 		})
 	}
@@ -95,8 +105,16 @@ func Run(ctx context.Context, config Config) error {
 			return runDNSServer(ctx, logger, &dns.Server{
 				Addr:      config.Transport.DOT.Bind,
 				Net:       "tcp-tls",
-				Handler:   h,
 				TLSConfig: tlsConfig,
+				Handler: handler.New(handler.Config{
+					Allow:      allow,
+					Block:      block,
+					Upstreams:  upstreams,
+					Logger:     logger.With("protocol", "dot"),
+					Cache:      c,
+					ClientFunc: handler.ClientFunc,
+					Protocol:   "dot",
+				}),
 			})
 		})
 	}
@@ -113,8 +131,16 @@ func Run(ctx context.Context, config Config) error {
 
 			return runHTTPServer(ctx, logger, &http.Server{
 				Addr:      config.Transport.DOH.Bind,
-				Handler:   h,
 				TLSConfig: tlsConfig,
+				Handler: handler.New(handler.Config{
+					Allow:      allow,
+					Block:      block,
+					Upstreams:  upstreams,
+					Logger:     logger.With("protocol", "doh"),
+					Cache:      c,
+					ClientFunc: handler.ClientFunc,
+					Protocol:   "doh",
+				}),
 			})
 		})
 	}
@@ -132,7 +158,7 @@ func Run(ctx context.Context, config Config) error {
 }
 
 func runDNSServer(ctx context.Context, logger *slog.Logger, server *dns.Server) error {
-	log := logger.With("net", server.Net, "addr", server.Addr)
+	log := logger.With("protocol", server.Net, "addr", server.Addr)
 
 	// Allow multiple listeners to use the same address/port if supported.
 	server.ReusePort = true
@@ -155,7 +181,7 @@ func runDNSServer(ctx context.Context, logger *slog.Logger, server *dns.Server) 
 }
 
 func runHTTPServer(ctx context.Context, logger *slog.Logger, server *http.Server) error {
-	log := logger.With("addr", server.Addr, "net", "http")
+	log := logger.With("protocol", "http", "addr", server.Addr)
 
 	group, ctx := errgroup.WithContext(ctx)
 	group.Go(func() error {

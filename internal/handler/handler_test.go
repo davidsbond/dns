@@ -19,6 +19,7 @@ import (
 	"github.com/davidsbond/dns/internal/handler"
 	"github.com/davidsbond/dns/internal/list"
 	"github.com/davidsbond/x/set"
+	"github.com/davidsbond/x/weightslice"
 )
 
 func TestHandler_ServeDNS(t *testing.T) {
@@ -247,7 +248,7 @@ func TestHandler_ServeDNS(t *testing.T) {
 			cfg := handler.Config{
 				Allow:      tc.Allow,
 				Block:      tc.Block,
-				Upstreams:  tc.Upstreams,
+				Upstreams:  weightslice.New[string, time.Duration](tc.Upstreams, weightslice.Ascending),
 				Logger:     testLogger(t),
 				Cache:      cache.NewNoopCache(),
 				ClientFunc: handler.ClientFunc,
@@ -708,7 +709,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			cfg := handler.Config{
 				Allow:      tc.Allow,
 				Block:      tc.Block,
-				Upstreams:  tc.Upstreams,
+				Upstreams:  weightslice.New[string, time.Duration](tc.Upstreams, weightslice.Ascending),
 				Logger:     testLogger(t),
 				Cache:      cache.NewNoopCache(),
 				ClientFunc: handler.ClientFunc,

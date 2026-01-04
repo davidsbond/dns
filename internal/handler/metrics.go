@@ -10,14 +10,14 @@ var (
 		Subsystem: "handler",
 		Name:      "queries_total",
 		Help:      "Total number of DNS queries made via the server",
-	}, []string{"qtype"})
+	}, []string{"qtype", "protocol"})
 
 	dnsResponses = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "dns",
 		Subsystem: "handler",
 		Name:      "responses_total",
 		Help:      "Total number of DNS responses returned via the server",
-	}, []string{"rcode"})
+	}, []string{"rcode", "protocol"})
 
 	dnsBlocked = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "dns",

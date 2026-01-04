@@ -37,6 +37,7 @@ type (
 		udpClient DNSClient
 		tcpClient DNSClient
 		cache     Cache
+		protocol  string
 	}
 
 	// The Config type contains fields used to configure the Handler.
@@ -46,14 +47,17 @@ type (
 		// The list of blocked domains.
 		Block *set.Set[string]
 		// Upstream DNS servers to forward unblocked/allowed DNS queries to.
-		Upstreams []string
+		Upstreams *weightslice.Slice[string, time.Duration]
 		// The logger to use for errors.
 		Logger *slog.Logger
 		// The cache to use for reducing upstream DNS calls.
 		Cache Cache
-		// Function  used to create DNS clients for upstreaming requests. This is typically used to swap out upstream calls
-		// with mock clients in tests. For normal usage, use ClientFunc.
+		// Function  used to create DNS clients for upstreaming requests. This is typically used to swap out upstream
+		// calls with mock clients in tests. For normal usage, use ClientFunc.
 		ClientFunc func(net string, timeout time.Duration) DNSClient
+		// String used to indicate the protocol used to handle DNS queries for this handler. Primarily used for
+		// cardinality across metrics.
+		Protocol string
 	}
 
 	// The Cache interface describes types that can cache pairs of DNS requests and responses. Cache implementations
@@ -83,9 +87,10 @@ func ClientFunc(net string, timeout time.Duration) DNSClient {
 // field of the dns.Server and http.Server types.
 func New(config Config) *Handler {
 	return &Handler{
-		allow:  config.Allow,
-		block:  config.Block,
-		logger: config.Logger,
+		allow:    config.Allow,
+		block:    config.Block,
+		logger:   config.Logger,
+		protocol: config.Protocol,
 
 		// We have a UDP client which we always use first, then a TCP client when we get truncated responses from
 		// the upstream.
@@ -94,7 +99,7 @@ func New(config Config) *Handler {
 
 		// We want to weight the upstream DNS servers by their round-trip duration in ascending order, so the historically
 		// fastest DNS upstream is always tried first.
-		upstreams: weightslice.New[string, time.Duration](config.Upstreams, weightslice.Ascending),
+		upstreams: config.Upstreams,
 
 		// We use an in-memory cache for reducing the number of upstream calls as DNS can be a very noisy protocol for
 		// regular use.
@@ -129,7 +134,7 @@ func (h *Handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		h.logger.With("error", err).Error("failed to write dns response")
 	}
 
-	dnsResponses.WithLabelValues(dns.RcodeToString[resp.Rcode]).Inc()
+	dnsResponses.WithLabelValues(dns.RcodeToString[resp.Rcode], h.protocol).Inc()
 }
 
 // ServeHTTP handles an inbound HTTP request attempting to perform a DNS query using DNS-over-HTTPs.
@@ -228,7 +233,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.logger.With("error", err).Error("failed to write http response")
 	}
 
-	dnsResponses.WithLabelValues(dns.RcodeToString[resp.Rcode]).Inc()
+	dnsResponses.WithLabelValues(dns.RcodeToString[resp.Rcode], h.protocol).Inc()
 }
 
 func (h *Handler) dnsError(w io.Writer, r *dns.Msg, code int, extra ...dns.RR) {
@@ -250,7 +255,7 @@ func (h *Handler) dnsError(w io.Writer, r *dns.Msg, code int, extra ...dns.RR) {
 		h.logger.With("error", err, "question", r.Question[0].Name).Error("failed to respond to DNS request")
 	}
 
-	dnsResponses.WithLabelValues(dns.RcodeToString[response.Rcode]).Inc()
+	dnsResponses.WithLabelValues(dns.RcodeToString[response.Rcode], h.protocol).Inc()
 }
 
 func (h *Handler) upstream(ctx context.Context, r *dns.Msg) (*dns.Msg, error) {
@@ -384,7 +389,7 @@ func (h *Handler) checkLists(w io.Writer, r *dns.Msg) bool {
 	question := r.Question[0]
 	name := strings.TrimSuffix(strings.ToLower(question.Name), ".")
 
-	dnsQueries.WithLabelValues(dns.TypeToString[question.Qtype]).Inc()
+	dnsQueries.WithLabelValues(dns.TypeToString[question.Qtype], h.protocol).Inc()
 
 	// RFC-1035 (4.3.1): NXDOMAIN indicates that the domain name does not exist. Used here for  policy-based blocking.
 	if h.block.Contains(name) && !h.allow.Contains(name) {

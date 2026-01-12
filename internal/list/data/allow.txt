@@ -239,7 +239,12 @@ web-fallback.facebook.com
 connect.facebook.com
 connect.facebook.net
 mqtt-mini.facebook.com
+ep1.facebook.com
 ep2.facebook.com
+ep6.facebook.com
+ep7.facebook.com
+ep8.facebook.com
+ep9.facebook.com
 
 # Unblock if you use Whatsapp avatar creator, helpcenter or video effects
 graph.whatsapp.com

@@ -93,6 +93,11 @@ c.amazon-adsystem.com
 # Various Apps on Android (TomTom, …)
 # Not reproducible
 device-api.asnapieu.com
+
+# Perplexcity freezes randomly.
+# https://github.com/hagezi/dns-blocklists/issues/8956
+fscdn.eppo.cloud
+
 # Windows Spotlight/Search, XBox Gamepass Images/GPU Perks.
 # Also used for Microsoft's advertising/tracking and content delivery services.
 arc.msn.com

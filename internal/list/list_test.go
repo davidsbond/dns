@@ -15,6 +15,8 @@ func TestBlock(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, blockList)
 	require.True(t, blockList.Contains("0.club"))
+	require.False(t, blockList.Contains(""))
+	require.False(t, blockList.Contains("# Title: HaGeZi's Ultimate DNS Blocklist"))
 }
 
 func TestAllow(t *testing.T) {
@@ -24,4 +26,6 @@ func TestAllow(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, allowList)
 	require.True(t, allowList.Contains("tags.tiqcdn.com"))
+	require.False(t, allowList.Contains(""))
+	require.False(t, allowList.Contains("# PlutoTV US"))
 }

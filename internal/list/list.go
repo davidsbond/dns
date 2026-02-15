@@ -64,8 +64,10 @@ func parseEntries(ctx context.Context, r io.Reader) (*set.Set[string], error) {
 			return nil, err
 		}
 
-		line := scanner.Text()
-		if strings.HasPrefix(line, "#") {
+		line := strings.TrimSpace(scanner.Text())
+
+		// Lists may contain empty lines or comments, we don't want to keep either of those.
+		if len(line) == 0 || strings.HasPrefix(line, "#") {
 			continue
 		}
 

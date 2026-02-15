@@ -16,10 +16,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/davidsbond/x/weightslice"
+
 	"github.com/davidsbond/dns/internal/cache"
 	"github.com/davidsbond/dns/internal/handler"
 	"github.com/davidsbond/dns/internal/list"
-	"github.com/davidsbond/x/weightslice"
 )
 
 func init() {
@@ -63,6 +64,22 @@ func Run(ctx context.Context, config Config) error {
 
 	upstreams := weightslice.New[string, time.Duration](config.DNS.Upstreams, weightslice.Ascending)
 	group, ctx := errgroup.WithContext(ctx)
+
+	group.Go(func() error {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-ticker.C:
+				// Reset weightings every hour, this prevents transient/intermittent round-trip times from permanently
+				// banishing an upstream from being used.
+				upstreams.Reset()
+			}
+		}
+	})
 
 	if config.Transport.UDP != nil {
 		group.Go(func() error {

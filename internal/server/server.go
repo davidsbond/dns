@@ -72,7 +72,7 @@ func Run(ctx context.Context, config Config) error {
 		for {
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return nil
 			case <-ticker.C:
 				// Reset weightings every hour, this prevents transient/intermittent round-trip times from permanently
 				// banishing an upstream from being used.

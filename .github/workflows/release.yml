@@ -41,6 +41,9 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ github.token }}
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4
+
       - name: Publish release
         env:
           GITHUB_TOKEN: ${{ github.token }}
